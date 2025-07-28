@@ -55,7 +55,7 @@ console.log("🔧 Using Safari Userscripts GM.* API")
     // DATA STORAGE SETTINGS (All Local - GDPR Compliant)
     // ═══════════════════════════════════════
     SAVE_PROGRESS_LOCALLY: true, // Save progress in browser storage
-    USE_INDEXEDDB: true, // Use IndexedDB for enhanced storage
+    USE_GM_STORAGE_ONLY: true, // Use only GM storage for consistency
     DATA_RETENTION_DAYS: 365, // How long to keep local data
   }
 
@@ -82,8 +82,6 @@ console.log("🔧 Using Safari Userscripts GM.* API")
 
     // Storage configuration
     STORAGE_PREFIX: "ra_tutor_gdpr_",
-    INDEXEDDB_NAME: "RadiologyTutorDB",
-    INDEXEDDB_VERSION: 1,
 
     // Privacy settings
     NO_PERSONAL_DATA: true,
@@ -262,53 +260,6 @@ console.log("🔧 Using Safari Userscripts GM.* API")
       )
     }
 
-    // GDPR: Initialize IndexedDB for enhanced local storage
-    async initIndexedDB() {
-      try {
-        const request = indexedDB.open(
-          CONFIG.INDEXEDDB_NAME,
-          CONFIG.INDEXEDDB_VERSION
-        )
-
-        request.onerror = () => {
-          console.warn(
-            "🔒 GDPR: IndexedDB unavailable, falling back to GM storage"
-          )
-          this.useIndexedDB = false
-        }
-
-        request.onsuccess = event => {
-          this.db = event.target.result
-          console.log("🔒 GDPR: IndexedDB initialized for local storage")
-        }
-
-        request.onupgradeneeded = event => {
-          const db = event.target.result
-
-          // Create object stores for different data types
-          if (!db.objectStoreNames.contains("progress")) {
-            const progressStore = db.createObjectStore("progress", {
-              keyPath: "id",
-            })
-            progressStore.createIndex("timestamp", "timestamp")
-          }
-
-          if (!db.objectStoreNames.contains("analytics")) {
-            const analyticsStore = db.createObjectStore("analytics", {
-              keyPath: "id",
-            })
-            analyticsStore.createIndex("date", "date")
-          }
-        }
-      } catch (error) {
-        console.warn(
-          "🔒 GDPR: IndexedDB initialization failed, using GM storage:",
-          error
-        )
-        this.useIndexedDB = false
-      }
-    }
-
     // GDPR: Save data locally only (no external transmission)
     async saveData(key, data) {
       try {
@@ -319,12 +270,22 @@ console.log("🔧 Using Safari Userscripts GM.* API")
           return
         }
 
-        // Add privacy metadata
-        const gdprData = {
-          ...data,
-          _gdpr_stored: Date.now(),
-          _gdpr_local_only: true,
-          _gdpr_no_personal_data: true,
+        // Add privacy metadata - handle arrays properly
+        let gdprData
+        if (Array.isArray(data)) {
+          // For arrays, add metadata without converting to object
+          gdprData = [...data] // Create a copy of the array
+          gdprData._gdpr_stored = Date.now()
+          gdprData._gdpr_local_only = true
+          gdprData._gdpr_no_personal_data = true
+        } else {
+          // For objects, spread normally
+          gdprData = {
+            ...data,
+            _gdpr_stored: Date.now(),
+            _gdpr_local_only: true,
+            _gdpr_no_personal_data: true,
+          }
         }
 
         // Always use GM storage for consistency
@@ -359,14 +320,50 @@ console.log("🔧 Using Safari Userscripts GM.* API")
             return defaultValue
           }
 
-          // Remove privacy metadata before returning
-          const {
-            _gdpr_stored,
-            _gdpr_local_only,
-            _gdpr_no_personal_data,
-            ...cleanData
-          } = data
-          return cleanData
+          // Remove privacy metadata before returning - handle arrays properly
+          if (Array.isArray(data)) {
+            // For arrays, remove metadata properties and return the array
+            const cleanArray = [...data]
+            delete cleanArray._gdpr_stored
+            delete cleanArray._gdpr_local_only
+            delete cleanArray._gdpr_no_personal_data
+            return cleanArray
+          } else {
+            // For objects, use destructuring
+            const {
+              _gdpr_stored,
+              _gdpr_local_only,
+              _gdpr_no_personal_data,
+              ...cleanData
+            } = data
+
+            // Special case: If this looks like corrupted Q&A history (object with numeric keys), convert to array
+            if (
+              key.startsWith("qa_history_") &&
+              typeof cleanData === "object" &&
+              !Array.isArray(cleanData)
+            ) {
+              const numericKeys = Object.keys(cleanData).filter(k =>
+                /^\d+$/.test(k)
+              )
+              if (numericKeys.length > 0) {
+                console.log(
+                  `🔧 GDPR: Converting corrupted Q&A history from object to array for key: ${key}`
+                )
+                const arrayData = []
+                numericKeys
+                  .sort((a, b) => parseInt(a) - parseInt(b))
+                  .forEach(k => {
+                    arrayData.push(cleanData[k])
+                  })
+                // Save the corrected data back
+                setTimeout(() => this.saveData(key, arrayData), 100)
+                return arrayData
+              }
+            }
+
+            return cleanData
+          }
         }
 
         console.log(
@@ -445,131 +442,6 @@ console.log("🔧 Using Safari Userscripts GM.* API")
       }
     }
 
-    // Helper methods for IndexedDB operations
-    async saveToIndexedDB(key, data) {
-      return new Promise((resolve, reject) => {
-        console.log(
-          `🔧 saveToIndexedDB: Saving key '${key}' to IndexedDB`,
-          data
-        )
-
-        try {
-          const transaction = this.db.transaction(["progress"], "readwrite")
-          const store = transaction.objectStore("progress")
-          const recordToSave = {
-            id: key,
-            data: data,
-            timestamp: Date.now(),
-          }
-
-          console.log(`🔧 saveToIndexedDB: Record to save:`, recordToSave)
-          const request = store.put(recordToSave)
-
-          request.onsuccess = () => {
-            console.log(`🔧 saveToIndexedDB: Successfully saved key '${key}'`)
-            resolve()
-          }
-
-          request.onerror = () => {
-            console.error(
-              `🔧 saveToIndexedDB: Error saving key '${key}':`,
-              request.error
-            )
-            reject(request.error)
-          }
-
-          transaction.onerror = () => {
-            console.error(
-              `🔧 saveToIndexedDB: Transaction error for key '${key}':`,
-              transaction.error
-            )
-            reject(transaction.error)
-          }
-
-          transaction.onabort = () => {
-            console.error(
-              `🔧 saveToIndexedDB: Transaction aborted for key '${key}'`
-            )
-            reject(new Error("Transaction aborted"))
-          }
-        } catch (error) {
-          console.error(
-            `🔧 saveToIndexedDB: Exception for key '${key}':`,
-            error
-          )
-          reject(error)
-        }
-      })
-    }
-
-    async loadFromIndexedDB(key) {
-      return new Promise((resolve, reject) => {
-        const transaction = this.db.transaction(["progress"], "readonly")
-        const store = transaction.objectStore("progress")
-        const request = store.get(key)
-
-        request.onsuccess = () => {
-          const result = request.result
-          resolve(result ? result.data : null)
-        }
-        request.onerror = () => reject(request.error)
-      })
-    }
-
-    async deleteFromIndexedDB(key) {
-      return new Promise((resolve, reject) => {
-        const transaction = this.db.transaction(["progress"], "readwrite")
-        const store = transaction.objectStore("progress")
-        const request = store.delete(key)
-
-        request.onsuccess = () => resolve()
-        request.onerror = () => reject(request.error)
-      })
-    }
-
-    async getAllIndexedDBKeys() {
-      return new Promise((resolve, reject) => {
-        console.log("🔧 getAllIndexedDBKeys: Starting IndexedDB key retrieval")
-
-        try {
-          const transaction = this.db.transaction(["progress"], "readonly")
-          const store = transaction.objectStore("progress")
-          const request = store.getAllKeys()
-
-          request.onsuccess = () => {
-            const keys = request.result
-            console.log("🔧 getAllIndexedDBKeys: Success! Keys found:", keys)
-            console.log("🔧 getAllIndexedDBKeys: Number of keys:", keys.length)
-            resolve(keys)
-          }
-
-          request.onerror = () => {
-            console.error(
-              "🔧 getAllIndexedDBKeys: Error occurred:",
-              request.error
-            )
-            reject(request.error)
-          }
-
-          transaction.onerror = () => {
-            console.error(
-              "🔧 getAllIndexedDBKeys: Transaction error:",
-              transaction.error
-            )
-            reject(transaction.error)
-          }
-
-          transaction.onabort = () => {
-            console.error("🔧 getAllIndexedDBKeys: Transaction aborted")
-            reject(new Error("Transaction aborted"))
-          }
-        } catch (error) {
-          console.error("🔧 getAllIndexedDBKeys: Exception occurred:", error)
-          reject(error)
-        }
-      })
-    }
-
     // Debug method to log all current data
     async debugLogAllData() {
       console.log("🔍 === DEBUGGING ALL STORED DATA ===")
@@ -619,173 +491,7 @@ console.log("🔧 Using Safari Userscripts GM.* API")
     }
   }
 
-  // ========================================
-  // 📊 ANALYTICS & PROGRESS TRACKING
-  // ========================================
-  class ProgressTracker {
-    constructor(dataManager) {
-      this.dataManager = dataManager
-      this.startTime = Date.now()
-      this.lastActivity = Date.now()
-      this.currentPage = window.location.pathname
-      this.readingData = null
-      this.isInitialized = false
-      this.activityBuffer = 30000 // 30 seconds grace period for inactivity
-
-      // Simple activity tracking
-      this.setupActivityTracking()
-    }
-
-    setupActivityTracking() {
-      // Track mouse movement, scrolling, and keyboard activity
-      const updateActivity = () => {
-        this.lastActivity = Date.now()
-        this.updateActivity() // Also save to storage
-      }
-
-      document.addEventListener("mousemove", updateActivity, { passive: true })
-      document.addEventListener("scroll", updateActivity, { passive: true })
-      document.addEventListener("keydown", updateActivity, { passive: true })
-      document.addEventListener("click", updateActivity, { passive: true })
-    }
-
-    async initialize() {
-      try {
-        console.log("🔒 GDPR: Loading reading data...")
-        this.readingData = await this.loadReadingData()
-        console.log("🔒 GDPR: Reading data loaded:", this.readingData)
-
-        // Validate data structure
-        if (!this.readingData || typeof this.readingData !== "object") {
-          throw new Error("Invalid reading data structure")
-        }
-
-        // Ensure required properties exist for simplified tracking
-        if (!this.readingData.dailyPagesRead) {
-          console.warn("🔒 GDPR: Missing dailyPagesRead, creating it")
-          this.readingData.dailyPagesRead = {}
-        }
-        if (typeof this.readingData.apiCallsTotal !== "number") {
-          console.warn("🔒 GDPR: Missing apiCallsTotal, creating it")
-          this.readingData.apiCallsTotal = 0
-        }
-        if (typeof this.readingData.lastActivity !== "number") {
-          console.warn("🔒 GDPR: Missing lastActivity, creating it")
-          this.readingData.lastActivity = 0
-        }
-
-        this.isInitialized = true
-        console.log("🔒 GDPR: Progress tracking initialized successfully")
-      } catch (error) {
-        console.error("🔒 GDPR: Error initializing progress tracking:", error)
-        // Set default data if loading fails
-        console.log("🔒 GDPR: Setting default reading data structure")
-        this.readingData = {
-          // Simplified tracking - only 3 core metrics
-          lastActivity: Date.now(),
-          dailyPagesRead: {},
-          apiCallsTotal: 0,
-        }
-        this.isInitialized = true
-        console.log("🔒 GDPR: Progress tracking initialized with defaults")
-      }
-    }
-
-    async loadReadingData() {
-      return await this.dataManager.loadData("reading_progress", {
-        // Simplified tracking - only 3 core metrics
-        lastActivity: 0,
-        dailyPagesRead: {},
-        apiCallsTotal: 0,
-      })
-    }
-
-    saveReadingData() {
-      // Check if initialized
-      if (!this.isInitialized || !this.readingData) {
-        console.warn(
-          "🔒 GDPR: Progress tracker not initialized yet - cannot save data"
-        )
-        return
-      }
-      this.dataManager.saveData("reading_progress", this.readingData)
-    }
-
-    trackPageVisit() {
-      // Check if initialized
-      if (!this.isInitialized || !this.readingData) {
-        console.warn("🔒 GDPR: Progress tracker not initialized yet")
-        return
-      }
-
-      console.log("🔒 GDPR: trackPageVisit called - simplified tracking")
-
-      const today = new Date().toISOString().split("T")[0]
-
-      // Track daily pages read (simplified)
-      if (!this.readingData.dailyPagesRead[today]) {
-        this.readingData.dailyPagesRead[today] = 0
-      }
-      this.readingData.dailyPagesRead[today]++
-
-      // Update last activity
-      this.readingData.lastActivity = Date.now()
-
-      console.log(
-        `🔒 GDPR: Page visit tracked for ${today}: ${this.readingData.dailyPagesRead[today]} pages`
-      )
-      this.saveReadingData()
-    }
-
-    updateActivity() {
-      // Check if initialized
-      if (!this.isInitialized || !this.readingData) {
-        return
-      }
-
-      // Simple activity tracking - just update last activity timestamp
-      this.readingData.lastActivity = Date.now()
-      this.saveReadingData()
-    }
-
-    trackApiCall() {
-      // Check if initialized
-      if (!this.isInitialized || !this.readingData) {
-        console.warn("🔒 GDPR: Progress tracker not initialized yet")
-        return
-      }
-
-      this.readingData.apiCallsTotal = (this.readingData.apiCallsTotal || 0) + 1
-      this.readingData.lastApiCall = Date.now()
-      console.log(
-        `🔒 GDPR: API call tracked. Total: ${this.readingData.apiCallsTotal}`
-      )
-      this.saveReadingData()
-    }
-
-    getProgressSummary() {
-      // Check if initialized
-      if (!this.isInitialized || !this.readingData) {
-        console.warn("🔒 GDPR: Progress tracker not initialized yet")
-        return {
-          lastActivity: 0,
-          todayPagesRead: 0,
-          totalApiCalls: 0,
-          lastApiCall: 0,
-        }
-      }
-
-      const today = new Date().toISOString().split("T")[0]
-      const todayPagesRead = this.readingData.dailyPagesRead[today] || 0
-
-      return {
-        lastActivity: this.readingData.lastActivity || 0,
-        todayPagesRead: todayPagesRead,
-        totalApiCalls: this.readingData.apiCallsTotal || 0,
-        lastApiCall: this.readingData.lastApiCall || 0,
-      }
-    }
-  }
+  // Progress tracking removed. All analytics and logging now use DataManager directly (GM storage only).
 
   // ========================================
   // 🤖 AI TUTOR ENGINE
@@ -916,10 +622,8 @@ Return ONLY a JSON object with this exact structure:
           }),
         })
 
-        // Track API call for transparency
-        if (window.raTutor && window.raTutor.progressTracker) {
-          window.raTutor.progressTracker.trackApiCall()
-        }
+        // Track API call for transparency (GM storage only)
+        await this.trackApiCallGM()
 
         const data = JSON.parse(response.responseText)
         const quizContent = data.choices[0].message.content
@@ -998,10 +702,8 @@ Return ONLY a JSON object with this exact structure:
           }),
         })
 
-        // Track API call for transparency
-        if (window.raTutor && window.raTutor.progressTracker) {
-          window.raTutor.progressTracker.trackApiCall()
-        }
+        // Track API call for transparency (GM storage only)
+        await this.trackApiCallGM()
 
         const data = JSON.parse(response.responseText)
         return {
@@ -1616,12 +1318,10 @@ ANSWER:`
       return "Beginner"
     }
 
-    // Store Q&A history for specific page
+    // Store Q&A history for specific page (GM storage only)
     async storeQAHistory(pageUrl, question, answer) {
       try {
-        const dataManager = window.raTutor
-          ? window.raTutor.progressTracker.dataManager
-          : null
+        const dataManager = window.raTutor ? window.raTutor.dataManager : null
         if (!dataManager) return
 
         const historyKey = `qa_history_${this.getContentHash(pageUrl)}`
@@ -1653,12 +1353,10 @@ ANSWER:`
       }
     }
 
-    // Get Q&A history for specific page
+    // Get Q&A history for specific page (GM storage only)
     async getQAHistory(pageUrl) {
       try {
-        const dataManager = window.raTutor
-          ? window.raTutor.progressTracker.dataManager
-          : null
+        const dataManager = window.raTutor ? window.raTutor.dataManager : null
         if (!dataManager) return []
 
         const historyKey = `qa_history_${this.getContentHash(pageUrl)}`
@@ -1681,15 +1379,41 @@ ANSWER:`
         return []
       }
     }
+
+    // Track API call using GM storage only
+    async trackApiCallGM() {
+      try {
+        const dataManager = window.raTutor ? window.raTutor.dataManager : null
+        if (!dataManager) return
+
+        const statsKey = `api_stats_${this.getContentHash(
+          window.location.pathname
+        )}`
+        let stats = await dataManager.loadData(statsKey, {
+          apiCallsTotal: 0,
+          lastApiCall: null,
+        })
+        if (typeof stats !== "object" || stats === null)
+          stats = { apiCallsTotal: 0, lastApiCall: null }
+        stats.apiCallsTotal = (stats.apiCallsTotal || 0) + 1
+        stats.lastApiCall = Date.now()
+        await dataManager.saveData(statsKey, stats)
+        console.log(
+          `🔒 GDPR: API call tracked (GM storage). Total: ${stats.apiCallsTotal}`
+        )
+      } catch (error) {
+        console.error("Error tracking API call (GM storage):", error)
+      }
+    }
   }
 
   // ========================================
   // 🎨 UI MANAGER
   // ========================================
   class UIManager {
-    constructor(progressTracker, aiTutor) {
-      this.progressTracker = progressTracker
+    constructor(aiTutor, dataManager) {
       this.aiTutor = aiTutor
+      this.dataManager = dataManager
       this.isMinimized = CONFIG.TUTOR_PANEL_OPEN_BY_DEFAULT ? false : true
       this.currentTab = "summary" // Start with summary tab
       this.currentQuiz = null
@@ -1706,6 +1430,11 @@ ANSWER:`
       if (toggleButton) {
         toggleButton.style.display = this.isMinimized ? "block" : "none"
       }
+
+      // Initialize summary content
+      setTimeout(() => {
+        this.updateSummaryTab()
+      }, 100)
     }
 
     injectStyles() {
@@ -2735,10 +2464,7 @@ ANSWER:`
           if (key.includes("qa_history_")) {
             try {
               const cleanKey = key.replace("ra_tutor_gdpr_", "")
-              const history = await this.progressTracker.dataManager.loadData(
-                cleanKey,
-                []
-              )
+              const history = await this.dataManager.loadData(cleanKey, [])
               if (Array.isArray(history)) {
                 totalQAEntries += history.length
                 // Add dates from Q&A history
@@ -2842,10 +2568,7 @@ ANSWER:`
           try {
             const cleanKey = key.replace("ra_tutor_gdpr_", "")
             console.log("🔍 Loading Q&A history for activity:", cleanKey)
-            const history = await this.progressTracker.dataManager.loadData(
-              cleanKey,
-              []
-            )
+            const history = await this.dataManager.loadData(cleanKey, [])
             console.log("🔍 Q&A history for activity:", history)
 
             if (Array.isArray(history)) {
@@ -3225,10 +2948,7 @@ ANSWER:`
         for (const key of appDataKeys) {
           const cleanKey = key.replace("ra_tutor_gdpr_", "")
           console.log("🔍 Loading app data for key:", cleanKey)
-          const data = await this.progressTracker.dataManager.loadData(
-            cleanKey,
-            {}
-          )
+          const data = await this.dataManager.loadData(cleanKey, {})
           dataPreview[`APP_DATA_${cleanKey}`] = data
         }
 
@@ -3341,7 +3061,7 @@ ANSWER:`
           aiCacheEntries.forEach(([key, data]) => {
             const cacheKey = key.replace("AI_CACHE_", "")
             if (data && typeof data === "object" && !data.error) {
-              formattedData += `• <button onclick="window.raTutor.uiManager.aiTutor.viewCacheContent('${cacheKey}', '${data.type}')" style="background: #7198f8; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 10px; margin-right: 6px;">View</button>${cacheKey}: ${data.type} (${data.age}, ${data.size} bytes)<br>`
+              formattedData += `• <button onclick="window.raTutor.ui.aiTutor.viewCacheContent('${cacheKey}', '${data.type}')" style="background: #7198f8; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 10px; margin-right: 6px;">View</button>${cacheKey}: ${data.type} (${data.age}, ${data.size} bytes)<br>`
             } else if (data && data.error) {
               formattedData += `• ${cacheKey}: ${data.error}<br>`
             } else {
@@ -3443,9 +3163,9 @@ ANSWER:`
       console.log("📤 exportAllData called")
       try {
         // Debug: Log all current data
-        await this.progressTracker.dataManager.debugLogAllData()
+        await this.dataManager.debugLogAllData()
 
-        const allKeys = await this.progressTracker.dataManager.getAllKeys()
+        const allKeys = await this.dataManager.getAllKeys()
         const exportData = {
           exportDate: new Date().toISOString(),
           scriptVersion: GM.info ? GM.info.script.version : "0.0.1",
@@ -3454,10 +3174,7 @@ ANSWER:`
 
         for (const key of allKeys) {
           const cleanKey = key.replace("ra_tutor_", "")
-          const data = await this.progressTracker.dataManager.loadData(
-            cleanKey,
-            {}
-          )
+          const data = await this.dataManager.loadData(cleanKey, {})
           exportData.data[cleanKey] = data
         }
 
@@ -3494,21 +3211,12 @@ ANSWER:`
         )
       ) {
         try {
-          // Reset progress tracker data
-          this.progressTracker.readingData = {
-            totalReadingTime: 0,
-            pagesVisited: {},
-            dailyStats: {},
-            knowledgeTests: [],
-            comprehensionScores: [],
-          }
-
           // Clear all data except API key
-          const allKeys = await this.progressTracker.dataManager.getAllKeys()
+          const allKeys = await this.dataManager.getAllKeys()
           for (const key of allKeys) {
             const cleanKey = key.replace("ra_tutor_", "")
             if (cleanKey !== "mistral_api_key") {
-              await this.progressTracker.dataManager.deleteData(cleanKey)
+              await this.dataManager.deleteData(cleanKey)
             }
           }
 
@@ -3603,15 +3311,12 @@ ANSWER:`
   class RadiologyAssistantTutor {
     constructor() {
       this.dataManager = new DataManager()
-      this.progressTracker = new ProgressTracker(this.dataManager)
       this.aiTutor = new AITutor()
-      this.ui = new UIManager(this.progressTracker, this.aiTutor)
+      this.ui = new UIManager(this.aiTutor, this.dataManager)
     }
 
     init() {
       console.log("🧠 Radiology Assistant Personal Tutor - Initializing...")
-
-      // Wait for page to be ready
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", () => this.start())
       } else {
@@ -3622,36 +3327,10 @@ ANSWER:`
     async start() {
       try {
         console.log("🧠 Starting Radiology Assistant Personal Tutor...")
-
-        // Make tutor globally accessible early
         window.raTutor = this
-
-        // Initialize AI Tutor first
         console.log("🔒 GDPR: Initializing AI Tutor...")
         await this.aiTutor.initialize()
-
-        // Initialize progress tracker with proper error handling
-        console.log("🔒 GDPR: Initializing progress tracker...")
-        await this.progressTracker.initialize()
-        console.log("🔒 GDPR: Progress tracker initialized successfully")
-
-        // Verify initialization before tracking page visit
-        if (
-          this.progressTracker.isInitialized &&
-          this.progressTracker.readingData
-        ) {
-          console.log("🔒 GDPR: Tracking page visit...")
-          this.progressTracker.trackPageVisit()
-        } else {
-          console.error("🔒 GDPR: Progress tracker not properly initialized:", {
-            isInitialized: this.progressTracker.isInitialized,
-            hasReadingData: !!this.progressTracker.readingData,
-          })
-        }
-
-        // Initialize UI
         this.ui.init()
-
         console.log("✅ Radiology Assistant Personal Tutor - Ready!")
       } catch (error) {
         console.error("❌ Error initializing tutor:", error)
