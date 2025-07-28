@@ -320,7 +320,7 @@ console.log("🔧 Using Safari Userscripts GM.* API")
             return defaultValue
           }
 
-          // Remove privacy metadata before returning - handle arrays properly
+          // Remove privacy metadata before returning
           if (Array.isArray(data)) {
             // For arrays, remove metadata properties and return the array
             const cleanArray = [...data]
@@ -336,32 +336,6 @@ console.log("🔧 Using Safari Userscripts GM.* API")
               _gdpr_no_personal_data,
               ...cleanData
             } = data
-
-            // Special case: If this looks like corrupted Q&A history (object with numeric keys), convert to array
-            if (
-              key.startsWith("qa_history_") &&
-              typeof cleanData === "object" &&
-              !Array.isArray(cleanData)
-            ) {
-              const numericKeys = Object.keys(cleanData).filter(k =>
-                /^\d+$/.test(k)
-              )
-              if (numericKeys.length > 0) {
-                console.log(
-                  `🔧 GDPR: Converting corrupted Q&A history from object to array for key: ${key}`
-                )
-                const arrayData = []
-                numericKeys
-                  .sort((a, b) => parseInt(a) - parseInt(b))
-                  .forEach(k => {
-                    arrayData.push(cleanData[k])
-                  })
-                // Save the corrected data back
-                setTimeout(() => this.saveData(key, arrayData), 100)
-                return arrayData
-              }
-            }
-
             return cleanData
           }
         }
@@ -373,15 +347,6 @@ console.log("🔧 Using Safari Userscripts GM.* API")
         return defaultValue
       } catch (error) {
         console.error("🔒 GDPR: Error loading local data:", error)
-
-        // If data is corrupted, clear it and return default
-        try {
-          console.log(`🔒 GDPR: Clearing corrupted data for key: ${key}`)
-          await this.deleteData(key)
-        } catch (clearError) {
-          console.warn("🔒 GDPR: Could not clear corrupted data:", clearError)
-        }
-
         return defaultValue
       }
     }
@@ -439,43 +404,6 @@ console.log("🔧 Using Safari Userscripts GM.* API")
         )
       } catch (error) {
         console.error("🔒 GDPR: Error clearing user data:", error)
-      }
-    }
-
-    // Debug method to log all current data
-    async debugLogAllData() {
-      console.log("🔍 === DEBUGGING ALL STORED DATA ===")
-
-      try {
-        console.log("🔍 Storage configuration:")
-        console.log("  - Using GM storage only for consistency")
-        console.log("  - storagePrefix:", this.storagePrefix)
-
-        console.log("🔍 === GM Storage Debug ===")
-        const gmKeys = await GM.listValues()
-        console.log("🔍 All GM keys:", gmKeys)
-
-        const filteredKeys = gmKeys.filter(key =>
-          key.startsWith(this.storagePrefix)
-        )
-        console.log("🔍 Filtered GM keys (with prefix):", filteredKeys)
-
-        if (filteredKeys.length > 0) {
-          for (const key of filteredKeys) {
-            try {
-              const value = await GM.getValue(key)
-              console.log(`🔍 GM data for key '${key}':`, value)
-            } catch (error) {
-              console.error(`🔍 Error loading GM key '${key}':`, error)
-            }
-          }
-        } else {
-          console.log("🔍 No GM keys found with prefix:", this.storagePrefix)
-        }
-
-        console.log("🔍 === END DATA DEBUG ===")
-      } catch (error) {
-        console.error("🔍 Error in debugLogAllData:", error)
       }
     }
 
@@ -1179,43 +1107,13 @@ ${responseStructure}`
             `
           }
         } else if (type === "Q&A") {
-          // Handle both object format (legacy) and string format (new)
-          if (typeof content === "string") {
-            // String content - it's a formatted answer
-            formattedContent = `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0f2142; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💡 Answer</div>
-                <div style="color: #e8eaed; line-height: 1.5;">${content}</div>
-              </div>
-            `
-          } else if (content && typeof content === "object") {
-            // Object format with question and answer
-            formattedContent = `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0a1f3d; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">❓ Question</div>
-                <div style="color: #e8eaed;">${this.formatMarkdownToHTML(
-                  content.question || "No question found"
-                )}</div>
-              </div>
-              <div style="margin-bottom: 15px; padding: 10px; background: #0f2142; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💡 Answer</div>
-                <div style="color: #e8eaed; line-height: 1.5;">${this.formatMarkdownToHTML(
-                  content.answer || "No answer found"
-                )}</div>
-              </div>
-            `
-          } else {
-            formattedContent = `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0f2142; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💡 Raw Content</div>
-                <div style="color: #e8eaed; line-height: 1.5;">${JSON.stringify(
-                  content,
-                  null,
-                  2
-                )}</div>
-              </div>
-            `
-          }
+          // Q&A cache should contain formatted answer strings
+          formattedContent = `
+            <div style="margin-bottom: 15px; padding: 10px; background: #0f2142; border-radius: 6px;">
+              <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💡 Answer</div>
+              <div style="color: #e8eaed; line-height: 1.5;">${content}</div>
+            </div>
+          `
         }
 
         window.raTutor.uiManager.showDataModal(
@@ -1362,18 +1260,8 @@ ANSWER:`
         const historyKey = `qa_history_${this.getContentHash(pageUrl)}`
         const history = await dataManager.loadData(historyKey, [])
 
-        // Handle both array format and object format (numbered entries)
-        if (Array.isArray(history)) {
-          return history
-        } else if (typeof history === "object" && history !== null) {
-          // Convert numbered object entries to array
-          const entries = Object.values(history)
-          return entries.filter(
-            entry => entry && entry.question && entry.answer
-          )
-        }
-
-        return []
+        // Should always be an array for fresh installations
+        return Array.isArray(history) ? history : []
       } catch (error) {
         console.error("Error loading Q&A history:", error)
         return []
@@ -1393,8 +1281,7 @@ ANSWER:`
           apiCallsTotal: 0,
           lastApiCall: null,
         })
-        if (typeof stats !== "object" || stats === null)
-          stats = { apiCallsTotal: 0, lastApiCall: null }
+
         stats.apiCallsTotal = (stats.apiCallsTotal || 0) + 1
         stats.lastApiCall = Date.now()
         await dataManager.saveData(statsKey, stats)
@@ -1935,10 +1822,14 @@ ANSWER:`
               🤔 Get Answer
             </button>
             <button id="show-qa-history" style="padding: 6px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
-              📜 View History
+              📜 Q&A History
+            </button>
+            <button id="show-summary-history" style="padding: 6px 12px; background: #ffc107; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+              📄 Summary History
             </button>
           </div>
           <div id="qa-history-content" style="margin-top: 10px; display: none;"></div>
+          <div id="summary-history-content" style="margin-top: 10px; display: none;"></div>
           <div id="answer-content" style="margin-top: 10px; padding: 10px; background: #0f2142; border-radius: 4px; display: none;"></div>
         </div>
       </div>
@@ -2101,10 +1992,85 @@ ANSWER:`
           // Toggle visibility
           if (historyContent.style.display === "none") {
             historyContent.style.display = "block"
-            showHistoryButton.textContent = "🔼 Hide History"
+            showHistoryButton.textContent = "🔼 Hide Q&A History"
           } else {
             historyContent.style.display = "none"
-            showHistoryButton.textContent = "📜 View History"
+            showHistoryButton.textContent = "📜 Q&A History"
+          }
+        })
+      }
+
+      // Add summary history functionality
+      const showSummaryHistoryButton = container.querySelector(
+        "#show-summary-history"
+      )
+      const summaryHistoryContent = container.querySelector(
+        "#summary-history-content"
+      )
+
+      if (showSummaryHistoryButton && summaryHistoryContent) {
+        showSummaryHistoryButton.addEventListener("click", async () => {
+          const pageUrl = window.location.pathname
+          const summaries = await this.getSummaryHistory(pageUrl)
+
+          if (summaries.length === 0) {
+            summaryHistoryContent.innerHTML = `
+              <div style="padding: 10px; background: #1a3a6b; border-radius: 4px; color: #b0bec5; text-align: center;">
+                📄 No summaries generated for this page yet.<br>
+                <span style="font-size: 10px;">Generate your first summary above!</span>
+              </div>
+            `
+          } else {
+            let summaryHTML = `
+              <div style="max-height: 300px; overflow-y: auto; border: 1px solid #2c4a7c; border-radius: 4px;">
+                <div style="padding: 8px; background: #1a3a6b; font-weight: bold; border-bottom: 1px solid #2c4a7c;">
+                  📄 Summary History for this page (${summaries.length} entries)
+                </div>
+            `
+
+            summaries.forEach((entry, index) => {
+              // Format timestamp properly to EU format (DD.MM.YYYY HH:MM)
+              const entryTime = entry.timestamp
+                ? new Date(entry.timestamp)
+                    .toLocaleString("en-GB", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    })
+                    .replace(",", "")
+                : "Unknown time"
+
+              summaryHTML += `
+                <div style="padding: 10px; border-bottom: 1px solid #2c4a7c; background: ${
+                  index % 2 === 0 ? "#0f2142" : "#123262"
+                };">
+                  <div style="font-weight: bold; color: #ffc107; margin-bottom: 5px;">
+                    📄 Summary ${index + 1}
+                  </div>
+                  <div style="margin-bottom: 5px; font-size: 11px; color: #95a5a6;">
+                    🕐 ${entryTime}
+                  </div>
+                  <div style="color: #e8eaed; font-size: 12px; line-height: 1.4;">
+                    ${this.formatSummaryContentSimple(entry.content)}
+                  </div>
+                </div>
+              `
+            })
+
+            summaryHTML += `</div>`
+            summaryHistoryContent.innerHTML = summaryHTML
+          }
+
+          // Toggle visibility
+          if (summaryHistoryContent.style.display === "none") {
+            summaryHistoryContent.style.display = "block"
+            showSummaryHistoryButton.textContent = "🔼 Hide Summary History"
+          } else {
+            summaryHistoryContent.style.display = "none"
+            showSummaryHistoryButton.textContent = "📄 Summary History"
           }
         })
       }
@@ -2555,10 +2521,11 @@ ANSWER:`
     }
 
     async getActivityByDate() {
-      const activityMap = new Map()
-
       try {
-        // Get Q&A history by date
+        const allQAEntries = []
+        const allSummaries = []
+
+        // Get all Q&A entries
         const allGMKeys = await GM.listValues()
         const appDataKeys = allGMKeys.filter(
           key => key.startsWith("ra_tutor_gdpr_") && key.includes("qa_history_")
@@ -2567,225 +2534,162 @@ ANSWER:`
         for (const key of appDataKeys) {
           try {
             const cleanKey = key.replace("ra_tutor_gdpr_", "")
-            console.log("🔍 Loading Q&A history for activity:", cleanKey)
             const history = await this.dataManager.loadData(cleanKey, [])
-            console.log("🔍 Q&A history for activity:", history)
 
             if (Array.isArray(history)) {
               history.forEach(entry => {
                 if (entry.timestamp && entry.question && entry.answer) {
-                  const date = new Date(entry.timestamp)
-                    .toISOString()
-                    .split("T")[0]
-                  console.log(
-                    "🔍 Adding Q&A entry for date:",
-                    date,
-                    entry.question
-                  )
-                  if (!activityMap.has(date)) {
-                    activityMap.set(date, {
-                      questions: [],
-                      summaries: [],
-                    })
-                  }
-                  activityMap.get(date).questions.push({
+                  allQAEntries.push({
                     question: entry.question,
                     answer: entry.answer,
-                    time: new Date(entry.timestamp).toLocaleString("en-GB", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    }),
                     page: entry.pageTitle || "Unknown Page",
+                    timestamp: entry.timestamp,
                   })
                 }
               })
             }
           } catch (error) {
-            console.warn("Error loading Q&A for date grouping:", error)
+            console.warn("Error loading Q&A:", error)
           }
         }
 
-        // Get summaries by date from AI cache
+        // Get all AI summaries
         const aiCacheKeys = allGMKeys.filter(key =>
           key.startsWith("ai_cache_summary_")
         )
+
         for (const key of aiCacheKeys) {
           try {
             const cached = await GM.getValue(key, null)
             if (cached) {
               const parsedCache = JSON.parse(cached)
               if (parsedCache.timestamp && parsedCache.content) {
-                const date = new Date(parsedCache.timestamp)
-                  .toISOString()
-                  .split("T")[0]
-                if (!activityMap.has(date)) {
-                  activityMap.set(date, {
-                    questions: [],
-                    summaries: [],
-                  })
-                }
-
                 // Extract page info from cache key
                 const pageInfo =
                   key.replace("ai_cache_summary_", "").split("_")[0] ||
                   "Unknown Page"
 
-                activityMap.get(date).summaries.push({
+                allSummaries.push({
                   content: parsedCache.content,
-                  time: new Date(parsedCache.timestamp).toLocaleString(
-                    "en-GB",
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    }
-                  ),
                   page: pageInfo,
-                  keyPoints: parsedCache.content.keyPoints?.length || 0,
+                  timestamp: parsedCache.timestamp,
                 })
               }
             }
           } catch (error) {
-            console.warn("Error loading summary for date grouping:", error)
+            console.warn("Error loading summary:", error)
           }
         }
 
-        // Sort dates descending (newest first)
-        const sortedDates = Array.from(activityMap.keys()).sort((a, b) =>
-          b.localeCompare(a)
+        // Sort both by timestamp (newest first)
+        allQAEntries.sort(
+          (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+        )
+        allSummaries.sort(
+          (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
         )
 
-        if (sortedDates.length === 0) {
-          return `
-            <div style="padding: 20px; text-align: center; color: #b0bec5;">
-              📅 No learning activity recorded yet.<br>
-              <span style="font-size: 11px;">Start by reading pages and asking questions!</span>
-            </div>
-          `
+        allSummaries.length > 0
+          ? `<div style="margin-bottom: 12px; padding: 8px; background: #1a3a6b; border-radius: 6px; text-align: center;">
+               <strong style="color: #ffc107;">📄 AI Summaries (${
+                 allSummaries.length
+               })</strong>
+             </div>
+             <div style="max-height: 600px; overflow-y: auto; padding-right: 5px;">
+               ${allSummaries
+                 .map((summary, index) => {
+                   const summaryId = `summary-simple-${index}`
+
+                   return `<div style="margin-bottom: 10px; padding: 8px; background: #123262; border-radius: 6px; border-left: 4px solid #ffc107;">
+                   <div style="font-weight: bold; color: #ffc107; margin-bottom: 4px; font-size: 12px; cursor: pointer;" onclick="
+                     const content = document.getElementById('${summaryId}-content');
+                     const arrow = document.getElementById('${summaryId}-arrow');
+                     if (content.style.display === 'none') {
+                       content.style.display = 'block';
+                       arrow.textContent = '�';
+                     } else {
+                       content.style.display = 'none';
+                       arrow.textContent = '▶️';
+                     }
+                   ">
+                     <span id="${summaryId}-arrow">▶️</span> 📄 ${summary.page}
+                   </div>
+                   <div id="${summaryId}-content" style="display: none; color: #e8eaed; font-size: 11px; line-height: 1.4;">
+                     ${this.formatSummaryContent(summary.content)}
+                   </div>
+                 </div>`
+                 })
+                 .join("")}
+             </div>`
+          : `<div style="padding: 20px; text-align: center; color: #7f8c8d; border: 1px dashed #2c4a7c; border-radius: 6px;">
+               <div style="font-size: 12px;">📄 No summaries yet</div>
+               <div style="font-size: 10px; margin-top: 4px;">Generate summaries to see them here</div>
+             </div>`
+
+        // Expandable Q&A list with clickable entries
+        let qaList = ""
+        if (allQAEntries.length > 0) {
+          qaList = `<h4>❓ Questions & Answers (${allQAEntries.length}):</h4>`
+          qaList += `<div style="max-height: 400px; overflow-y: auto; margin: 10px 0;">`
+
+          allQAEntries.forEach((qa, index) => {
+            const qaId = `qa-simple-${index}`
+            qaList += `
+              <div style="margin-bottom: 10px; padding: 8px; background: #123262; border-radius: 6px; border-left: 4px solid #28a745;">
+                <div style="font-weight: bold; color: #28a745; margin-bottom: 4px; font-size: 12px; cursor: pointer;" onclick="
+                  const content = document.getElementById('${qaId}-content');
+                  const arrow = document.getElementById('${qaId}-arrow');
+                  if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    arrow.textContent = '▼';
+                  } else {
+                    content.style.display = 'none';
+                    arrow.textContent = '▶️';
+                  }
+                ">
+                  <span id="${qaId}-arrow">▶️</span> ❓ ${qa.question}
+                </div>
+                <div style="color: #b0bec5; font-size: 10px; margin-bottom: 4px;">
+                  📄 ${qa.page} • ${new Date(qa.timestamp).toLocaleDateString()}
+                </div>
+                <div id="${qaId}-content" style="display: none; color: #e8eaed; font-size: 11px; line-height: 1.4; margin-top: 8px; padding: 8px; background: #0f2142; border-radius: 4px;">
+                  <strong style="color: #7198f8;">💡 Answer:</strong><br>
+                  <div style="margin-top: 4px;">${
+                    qa.answer || "Answer not available"
+                  }</div>
+                </div>
+              </div>
+            `
+          })
+          qaList += `</div>`
+        } else {
+          qaList = `<h4>❓ Questions & Answers:</h4><p style="color: #7f8c8d;">No questions asked yet</p>`
         }
 
-        let html = ""
-        sortedDates.forEach(date => {
-          const activity = activityMap.get(date)
-          const formattedDate = new Date(date).toLocaleDateString("en-GB", {
-            weekday: "short",
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
+        let summariesList = ""
+        if (allSummaries.length > 0) {
+          summariesList = `<h4>📄 AI Summaries (${allSummaries.length}):</h4><ul style="margin: 10px 0; padding-left: 20px;">`
+          allSummaries.forEach(summary => {
+            summariesList += `<li style="margin: 8px 0; font-size: 12px;"><strong>${
+              summary.page
+            }</strong> (${new Date(
+              summary.timestamp
+            ).toLocaleDateString()})</li>`
           })
+          summariesList += `</ul>`
+        } else {
+          summariesList = `<h4>📄 AI Summaries:</h4><p style="color: #7f8c8d;">No summaries generated yet</p>`
+        }
 
-          html += `
-            <div style="margin-bottom: 12px; border: 1px solid #2c4a7c; border-radius: 6px; overflow: hidden;">
-              <div style="background: #1a3a6b; padding: 8px; font-weight: bold; color: #7198f8;">
-                📅 ${formattedDate}
-                <span style="font-size: 11px; color: #b0bec5; margin-left: 10px;">
-                  ${activity.questions.length} Q&A • ${activity.summaries.length} summaries
-                </span>
-              </div>
-              <div style="padding: 10px; background: #0f2142;">
-          `
-
-          // Show Q&A for this date
-          if (activity.questions.length > 0) {
-            html += `<div style="margin-bottom: 8px;"><strong style="color: #28a745;">❓ Questions & Answers (${activity.questions.length}):</strong></div>`
-            activity.questions.forEach((qa, index) => {
-              const qaId = `qa-${date}-${index}`
-              const isLongAnswer = qa.answer.length > 200
-              const shortAnswer = qa.answer.substring(0, 200)
-
-              html += `
-                <div style="margin-bottom: 10px; padding: 10px; background: #123262; border-radius: 6px; border-left: 4px solid #28a745;">
-                  <div style="font-size: 11px; color: #7198f8; margin-bottom: 6px;">
-                    🕐 ${qa.time} • 📄 ${qa.page}
-                  </div>
-                  <div style="font-weight: bold; color: #7198f8; margin-bottom: 6px; font-size: 13px;">
-                    ❓ ${qa.question}
-                  </div>
-                  <div style="color: #e8eaed; font-size: 12px; line-height: 1.4; margin-bottom: 6px;">
-                    <strong>💡 Answer:</strong><br>
-                    <span id="${qaId}-short">${shortAnswer}${
-                isLongAnswer ? "..." : ""
-              }</span>
-                    ${
-                      isLongAnswer
-                        ? `
-                      <span id="${qaId}-full" style="display: none;">${qa.answer}</span>
-                      <button onclick="
-                        const short = document.getElementById('${qaId}-short');
-                        const full = document.getElementById('${qaId}-full');
-                        const btn = this;
-                        if (full.style.display === 'none') {
-                          short.style.display = 'none';
-                          full.style.display = 'inline';
-                          btn.textContent = '🔼 Show Less';
-                        } else {
-                          short.style.display = 'inline';
-                          full.style.display = 'none';
-                          btn.textContent = '🔽 Show Full Answer';
-                        }
-                      " style="background: #17a2b8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 10px; cursor: pointer; margin-left: 8px;">
-                        🔽 Show Full Answer
-                      </button>
-                    `
-                        : ""
-                    }
-                  </div>
-                </div>
-              `
-            })
-          }
-
-          // Show summaries for this date
-          if (activity.summaries.length > 0) {
-            html += `<div style="margin-bottom: 8px; margin-top: 12px;"><strong style="color: #ffc107;">📄 AI Summaries (${activity.summaries.length}):</strong></div>`
-            activity.summaries.forEach((summary, index) => {
-              const summaryId = `summary-${date}-${index}`
-              const content = summary.content
-
-              html += `
-                <div style="margin-bottom: 10px; padding: 10px; background: #123262; border-radius: 6px; border-left: 4px solid #ffc107;">
-                  <div style="font-size: 11px; color: #7198f8; margin-bottom: 6px;">
-                    🕐 ${summary.time} • 📄 ${summary.page}
-                  </div>
-                  <div style="font-weight: bold; color: #ffc107; margin-bottom: 6px; font-size: 13px;">
-                    📄 AI Summary
-                  </div>
-                  <div id="${summaryId}-preview" style="color: #b0bec5; font-size: 11px; margin-bottom: 6px;">
-                    Generated AI summary with ${
-                      summary.keyPoints
-                    } key learning points
-                    <button onclick="
-                      const preview = document.getElementById('${summaryId}-preview');
-                      const full = document.getElementById('${summaryId}-full');
-                      const btn = this;
-                      if (full.style.display === 'none') {
-                        preview.style.display = 'none';
-                        full.style.display = 'block';
-                        btn.textContent = '🔼 Hide Summary';
-                      } else {
-                        preview.style.display = 'block';
-                        full.style.display = 'none';
-                        btn.textContent = '📖 View Full Summary';
-                      }
-                    " style="background: #ffc107; color: black; border: none; border-radius: 3px; padding: 2px 6px; font-size: 10px; cursor: pointer; margin-left: 8px;">
-                      📖 View Full Summary
-                    </button>
-                  </div>
-                  <div id="${summaryId}-full" style="display: none; color: #e8eaed; font-size: 12px; line-height: 1.4;">
-                    ${this.formatSummaryContent(content)}
-                  </div>
-                </div>
-              `
-            })
-          }
-
-          html += `</div></div>`
-        })
-
-        return html
+        return `
+          <div style="padding: 15px;">
+            ${qaList}
+            <hr style="margin: 20px 0; border-color: #2c4a7c;">
+            ${summariesList}
+          </div>
+        `
       } catch (error) {
-        console.error("Error generating activity by date:", error)
+        console.error("Error generating activity overview:", error)
         return `<div style="color: #dc3545;">Error loading activity data</div>`
       }
     }
@@ -2869,6 +2773,135 @@ ANSWER:`
       }
 
       return html || "Summary content not available"
+    }
+
+    formatSummaryContentSimple(summary) {
+      if (!summary) return "No content available"
+
+      let html = ""
+
+      // Convert markdown formatting to HTML and show key points
+      if (summary.keyPoints && summary.keyPoints.length > 0) {
+        html += `<div style="margin-bottom: 8px;"><strong>🎯 Key Points:</strong><br>`
+        summary.keyPoints.slice(0, 3).forEach(point => {
+          // Convert markdown **bold** to HTML <strong>
+          const formattedPoint = point.replace(
+            /\*\*(.*?)\*\*/g,
+            "<strong>$1</strong>"
+          )
+          html += `<div style="margin: 4px 0; padding-left: 8px;">• ${formattedPoint}</div>`
+        })
+        if (summary.keyPoints.length > 3) {
+          html += `<div style="color: #7f8c8d; font-style: italic; padding-left: 8px;">...and ${
+            summary.keyPoints.length - 3
+          } more</div>`
+        }
+        html += `</div>`
+      }
+
+      if (summary.clinicalPearls && summary.clinicalPearls.length > 0) {
+        html += `<div style="margin-bottom: 8px;"><strong>💎 Clinical Pearls:</strong><br>`
+        summary.clinicalPearls.slice(0, 2).forEach(pearl => {
+          // Convert markdown **bold** to HTML <strong>
+          const formattedPearl = pearl.replace(
+            /\*\*(.*?)\*\*/g,
+            "<strong>$1</strong>"
+          )
+          html += `<div style="margin: 4px 0; padding-left: 8px;">• ${formattedPearl}</div>`
+        })
+        if (summary.clinicalPearls.length > 2) {
+          html += `<div style="color: #7f8c8d; font-style: italic; padding-left: 8px;">...and ${
+            summary.clinicalPearls.length - 2
+          } more</div>`
+        }
+        html += `</div>`
+      }
+
+      return html || "Summary content available"
+    }
+
+    async getSummaryHistory(pageUrl) {
+      try {
+        const allGMKeys = await GM.listValues()
+        const summaries = []
+
+        // Get all AI summaries for this page
+        const aiCacheKeys = allGMKeys.filter(key =>
+          key.startsWith("ai_cache_summary_")
+        )
+
+        console.log("🔍 getSummaryHistory - pageUrl:", pageUrl)
+        console.log(
+          "🔍 getSummaryHistory - found cache keys:",
+          aiCacheKeys.length
+        )
+
+        for (const key of aiCacheKeys) {
+          try {
+            const cached = await GM.getValue(key, null)
+            if (cached) {
+              const parsedCache = JSON.parse(cached)
+              if (parsedCache.timestamp && parsedCache.content) {
+                // Extract page info from cache key and match against current page
+                const keyPageInfo = key
+                  .replace("ai_cache_summary_", "")
+                  .split("_")[0]
+                const currentPageInfo = pageUrl
+                  .replace(/[^a-zA-Z0-9]/g, "")
+                  .toLowerCase()
+
+                console.log("🔍 Comparing:", {
+                  keyPageInfo,
+                  currentPageInfo,
+                  key,
+                })
+
+                // More flexible matching - check if any part matches
+                const isMatch =
+                  keyPageInfo
+                    .toLowerCase()
+                    .includes(currentPageInfo.slice(-10)) ||
+                  currentPageInfo.includes(keyPageInfo.toLowerCase()) ||
+                  keyPageInfo.toLowerCase() === currentPageInfo.toLowerCase() ||
+                  // Also try to match the full URL parts
+                  pageUrl.includes(keyPageInfo) ||
+                  key.includes(
+                    pageUrl
+                      .split("/")
+                      .pop()
+                      ?.replace(/[^a-zA-Z0-9]/g, "")
+                      .toLowerCase() || ""
+                  )
+
+                console.log("🔍 Match result:", isMatch)
+
+                if (isMatch) {
+                  summaries.push({
+                    content: parsedCache.content,
+                    timestamp: parsedCache.timestamp,
+                    cacheKey: key, // for debugging
+                  })
+                  console.log("🔍 Added summary from:", key)
+                }
+              }
+            }
+          } catch (error) {
+            console.warn("Error loading summary from cache:", error)
+          }
+        }
+
+        console.log(
+          "🔍 getSummaryHistory - final summaries found:",
+          summaries.length
+        )
+
+        // Sort by timestamp (newest first)
+        summaries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        return summaries
+      } catch (error) {
+        console.error("Error getting summary history:", error)
+        return []
+      }
     }
 
     async testApiKey() {
@@ -3162,9 +3195,6 @@ ANSWER:`
     async exportAllData() {
       console.log("📤 exportAllData called")
       try {
-        // Debug: Log all current data
-        await this.dataManager.debugLogAllData()
-
         const allKeys = await this.dataManager.getAllKeys()
         const exportData = {
           exportDate: new Date().toISOString(),
