@@ -1698,8 +1698,8 @@ ANSWER:`
     init() {
       this.injectStyles()
       this.createTutorPanel()
-      this.bindEvents()
-      this.startPeriodicUpdates()
+      // Removed: this.bindEvents() - no more progress tracking
+      // Removed: this.startPeriodicUpdates() - no more background updates
 
       // Set initial toggle button state
       const toggleButton = document.getElementById("ra-tutor-toggle")
@@ -1948,11 +1948,8 @@ ANSWER:`
     }
 
     updateProgressTab() {
-      // Deprecated: Progress moved to stats section above settings
+      // REMOVED: All progress tracking functionality has been removed
       // This method is kept for compatibility but does nothing
-      console.log(
-        "updateProgressTab called but deprecated - stats moved to dedicated section"
-      )
     }
 
     async updateSummaryTab() {
@@ -2441,15 +2438,7 @@ ANSWER:`
       const isCorrect = selectedIndex === this.currentQuiz.correct
       const content = document.getElementById("quiz-content")
 
-      // Record the result
-      this.progressTracker.recordQuizResult(
-        this.currentQuiz.question,
-        this.currentQuiz.options[selectedIndex],
-        this.currentQuiz.options[this.currentQuiz.correct],
-        isCorrect
-      )
-
-      // Show feedback
+      // Show feedback (no more progress tracking)
       content.innerHTML = `
                 <div class="quiz-question">
                     <strong>❓ ${this.currentQuiz.question}</strong>
@@ -2469,8 +2458,6 @@ ANSWER:`
                     </div>
                 </div>
             `
-
-      // Settings content is now updated only when opened, not continuously
     }
 
     switchTab(tabName) {
@@ -2551,28 +2538,6 @@ ANSWER:`
         return `${hours}h ${minutes % 60}m`
       }
       return `${minutes}m`
-    }
-
-    bindEvents() {
-      // Track page unload to save reading time
-      window.addEventListener("beforeunload", () => {
-        this.progressTracker.updateReadingTime()
-      })
-
-      // Track visibility changes
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden) {
-          this.progressTracker.updateReadingTime()
-        } else {
-          this.progressTracker.startTime = Date.now()
-        }
-      })
-    }
-
-    startPeriodicUpdates() {
-      // Removed automatic updates - UI elements update only when manually triggered
-      // This improves performance and reduces console logging
-      console.log("📊 Periodic updates disabled - UI updates on-demand only")
     }
 
     showApiKeySetup() {
@@ -2677,37 +2642,28 @@ ANSWER:`
     async clearAllData() {
       if (
         confirm(
-          "⚠️ This will delete all your progress data and API key. This cannot be undone. Continue?"
+          "⚠️ This will delete all your Q&A history, summaries, and API key. This cannot be undone. Continue?"
         )
       ) {
         try {
-          // Reset progress tracker data first
-          this.progressTracker.readingData = {
-            totalReadingTime: 0,
-            pagesVisited: {},
-            dailyStats: {},
-            knowledgeTests: [],
-            comprehensionScores: [],
-          }
-
-          // Clear progress data
-          await this.progressTracker.dataManager.deleteData("reading_progress")
-
           // Clear API key
           GM.deleteValue("mistral_api_key")
           this.aiTutor.apiKey = null
 
-          // Clear any other stored data
-          const allKeys = await this.progressTracker.dataManager.getAllKeys()
+          // Clear Q&A and summary data
+          const allKeys = await GM.listValues()
           for (const key of allKeys) {
-            await this.progressTracker.dataManager.deleteData(
-              key.replace("ra_tutor_", "")
-            )
+            if (
+              key.startsWith("ra_tutor_gdpr_") ||
+              key.startsWith("ai_cache_")
+            ) {
+              await GM.deleteValue(key)
+            }
           }
 
           console.log("🔒 GDPR: All user data cleared successfully")
           alert("✅ All data cleared successfully.")
-          // Refresh the current tab instead of page reload
+          // Refresh the current tab
           this.switchTab(this.currentTab)
         } catch (error) {
           console.error("Error clearing data:", error)
@@ -2737,36 +2693,7 @@ ANSWER:`
     }
 
     async updateSettingsContent() {
-      // Update stats first
-      const summary = this.progressTracker.getProgressSummary()
-
-      // Format last API call time in EU format (DD.MM.YYYY HH:MM)
-      const lastApiTime = summary.lastApiCall
-        ? new Date(summary.lastApiCall)
-            .toLocaleString("en-GB", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: false,
-            })
-            .replace(",", "")
-        : "Never"
-
-      // Update stats
-      const statsHTML = `
-        📊 Pages today: ${summary.todayPagesRead}<br>
-        🤖 AI calls: ${summary.totalApiCalls}<br>
-        🕐 Last answer: ${lastApiTime}
-      `
-
-      const liveStats = document.getElementById("live-stats")
-      if (liveStats) {
-        liveStats.innerHTML = statsHTML
-      }
-
-      // Update API key status
+      // Update API key status only
       const apiKeyStatus = document.getElementById("api-key-status")
       if (apiKeyStatus) {
         const hasKey = this.aiTutor.hasApiKey()
@@ -2774,10 +2701,21 @@ ANSWER:`
           ? `✅ Configured: ${this.aiTutor.apiKey.substring(0, 8)}...****`
           : "❌ Not configured"
       }
+
+      // Update stats display - simplified
+      const liveStats = document.getElementById("live-stats")
+      if (liveStats) {
+        liveStats.innerHTML = `
+          📊 Extension loaded and ready<br>
+          🤖 AI features: ${
+            this.aiTutor.hasApiKey() ? "Available" : "Need API key"
+          }<br>
+          🕐 Status: Active
+        `
+      }
     }
 
     async showDataOverview() {
-      console.log("📊 showDataOverview called")
       try {
         // Get all data to calculate overview stats
         const allGMKeys = await GM.listValues()
@@ -2786,32 +2724,11 @@ ANSWER:`
         )
         const aiCacheKeys = allGMKeys.filter(key => key.startsWith("ai_cache_"))
 
-        // Calculate totals
+        // Calculate totals (simplified - derive pages from AI summaries)
         let totalQAEntries = 0
         let totalSummaries = 0
         let daysWithActivity = new Set()
-        let pagesVisited = 0
-
-        // Load reading progress to get page count
-        try {
-          const readingProgress =
-            await this.progressTracker.dataManager.loadData(
-              "reading_progress",
-              {}
-            )
-          if (readingProgress.dailyPagesRead) {
-            Object.entries(readingProgress.dailyPagesRead).forEach(
-              ([date, count]) => {
-                if (count > 0) {
-                  daysWithActivity.add(date)
-                  pagesVisited += count
-                }
-              }
-            )
-          }
-        } catch (error) {
-          console.warn("Error loading reading progress:", error)
-        }
+        let uniquePagesWithSummaries = new Set()
 
         // Count Q&A entries by loading qa_history keys
         for (const key of appDataKeys) {
@@ -2840,10 +2757,17 @@ ANSWER:`
           }
         }
 
-        // Count summaries from AI cache
+        // Count summaries from AI cache and derive unique pages
         for (const key of aiCacheKeys) {
           if (key.startsWith("ai_cache_summary_")) {
             totalSummaries++
+
+            // Extract page info from cache key to count unique pages
+            const pageInfo = key.replace("ai_cache_summary_", "").split("_")[0]
+            if (pageInfo && pageInfo !== "undefined") {
+              uniquePagesWithSummaries.add(pageInfo)
+            }
+
             // Add dates from cache timestamps
             try {
               const cached = await GM.getValue(key, null)
@@ -2876,8 +2800,8 @@ ANSWER:`
                 <div style="font-size: 11px; color: #b0bec5;">Active Days</div>
               </div>
               <div style="background: #123262; padding: 10px; border-radius: 6px; text-align: center;">
-                <div style="font-size: 18px; color: #7198f8; font-weight: bold;">${pagesVisited}</div>
-                <div style="font-size: 11px; color: #b0bec5;">Pages Read</div>
+                <div style="font-size: 18px; color: #7198f8; font-weight: bold;">${uniquePagesWithSummaries.size}</div>
+                <div style="font-size: 11px; color: #b0bec5;">Pages Summarized</div>
               </div>
               <div style="background: #123262; padding: 10px; border-radius: 6px; text-align: center;">
                 <div style="font-size: 18px; color: #7198f8; font-weight: bold;">${totalQAEntries}</div>
@@ -2917,10 +2841,12 @@ ANSWER:`
         for (const key of appDataKeys) {
           try {
             const cleanKey = key.replace("ra_tutor_gdpr_", "")
+            console.log("🔍 Loading Q&A history for activity:", cleanKey)
             const history = await this.progressTracker.dataManager.loadData(
               cleanKey,
               []
             )
+            console.log("🔍 Q&A history for activity:", history)
 
             if (Array.isArray(history)) {
               history.forEach(entry => {
@@ -2928,11 +2854,15 @@ ANSWER:`
                   const date = new Date(entry.timestamp)
                     .toISOString()
                     .split("T")[0]
+                  console.log(
+                    "🔍 Adding Q&A entry for date:",
+                    date,
+                    entry.question
+                  )
                   if (!activityMap.has(date)) {
                     activityMap.set(date, {
                       questions: [],
                       summaries: [],
-                      pages: 0,
                     })
                   }
                   activityMap.get(date).questions.push({
@@ -2970,7 +2900,6 @@ ANSWER:`
                   activityMap.set(date, {
                     questions: [],
                     summaries: [],
-                    pages: 0,
                   })
                 }
 
@@ -2997,33 +2926,6 @@ ANSWER:`
           } catch (error) {
             console.warn("Error loading summary for date grouping:", error)
           }
-        }
-
-        // Get page reading data
-        try {
-          const readingProgress =
-            await this.progressTracker.dataManager.loadData(
-              "reading_progress",
-              {}
-            )
-          if (readingProgress.dailyPagesRead) {
-            Object.entries(readingProgress.dailyPagesRead).forEach(
-              ([date, count]) => {
-                if (count > 0) {
-                  if (!activityMap.has(date)) {
-                    activityMap.set(date, {
-                      questions: [],
-                      summaries: [],
-                      pages: 0,
-                    })
-                  }
-                  activityMap.get(date).pages = count
-                }
-              }
-            )
-          }
-        } catch (error) {
-          console.warn("Error loading reading progress for dates:", error)
         }
 
         // Sort dates descending (newest first)
@@ -3055,7 +2957,7 @@ ANSWER:`
               <div style="background: #1a3a6b; padding: 8px; font-weight: bold; color: #7198f8;">
                 📅 ${formattedDate}
                 <span style="font-size: 11px; color: #b0bec5; margin-left: 10px;">
-                  ${activity.pages} pages • ${activity.questions.length} Q&A • ${activity.summaries.length} summaries
+                  ${activity.questions.length} Q&A • ${activity.summaries.length} summaries
                 </span>
               </div>
               <div style="padding: 10px; background: #0f2142;">

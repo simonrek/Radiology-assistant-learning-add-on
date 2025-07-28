@@ -3,7 +3,7 @@
 // ==UserScript==
 // @name         Radiology Assistant Personal Tutor
 // @namespace    https://github.com/simonrek/radiology-assistant-personal-tutor
-// @version      1.0.0
+// @version      0.0.1
 // @description  GDPR-compliant AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress, get tested, and maximize learning efficiency with Mistral AI
 // @author       Simon Rekanovic
 // @homepage     https://github.com/simonrek/radiology-assistant-personal-tutor
@@ -13,12 +13,12 @@
 // @match        https://radiologyassistant.nl/*
 // @exclude      https://radiologyassistant.nl/
 // @exclude      https://radiologyassistant.nl/index*
-// @grant        GM_setValue
-// @grant        GM_getValue
-// @grant        GM_deleteValue
-// @grant        GM_listValues
-// @grant        GM_addStyle
-// @grant        GM_xmlhttpRequest
+// @grant        GM.setValue
+// @grant        GM.getValue
+// @grant        GM.deleteValue
+// @grant        GM.listValues
+// @grant        GM.addStyle
+// @grant        GM.xmlHttpRequest
 // @connect      api.mistral.ai
 // @run-at       document-end
 // @license      MIT
