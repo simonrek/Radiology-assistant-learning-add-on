@@ -1386,15 +1386,7 @@ ${responseStructure}`
     // View cached content in a beautiful modal
     async viewCacheContent(cacheKey, type) {
       try {
-        // The cacheKey comes from the display, which has already removed ai_cache_ prefix
-        // So we need to add it back when looking up in GM storage
-        const fullCacheKey = cacheKey.startsWith("ai_cache_")
-          ? cacheKey
-          : `ai_cache_${cacheKey}`
-
-        console.log("🔍 ViewCacheContent: Looking for cache key:", fullCacheKey)
-
-        const cached = await GM.getValue(fullCacheKey, null)
+        const cached = await GM.getValue(`ai_cache_${cacheKey}`, null)
         if (!cached) {
           alert("Cache content not found!")
           return
@@ -1460,63 +1452,25 @@ ${responseStructure}`
               </div>
             `
           }
-
-          if (content.differentials && content.differentials.length > 0) {
-            formattedContent += `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0a1f3d; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">🔍 Differentials</div>
-                ${content.differentials
-                  .map(
-                    diff =>
-                      `<div style="margin: 4px 0;">• ${this.formatMarkdownToHTML(
-                        diff
-                      )}</div>`
-                  )
-                  .join("")}
-              </div>
-            `
-          }
         } else if (type === "Q&A") {
-          // Handle both object format (legacy) and string format (new)
-          if (typeof content === "string") {
-            // String content - it's a formatted answer
-            formattedContent = `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0f2142; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💡 Answer</div>
-                <div style="color: #e8eaed; line-height: 1.5;">${content}</div>
-              </div>
-            `
-          } else if (content && typeof content === "object") {
-            // Object format with question and answer
-            formattedContent = `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0a1f3d; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">❓ Question</div>
-                <div style="color: #e8eaed;">${this.formatMarkdownToHTML(
-                  content.question || "No question found"
-                )}</div>
-              </div>
-              <div style="margin-bottom: 15px; padding: 10px; background: #0f2142; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💡 Answer</div>
-                <div style="color: #e8eaed; line-height: 1.5;">${this.formatMarkdownToHTML(
-                  content.answer || "No answer found"
-                )}</div>
-              </div>
-            `
-          } else {
-            formattedContent = `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0f2142; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💡 Raw Content</div>
-                <div style="color: #e8eaed; line-height: 1.5;">${JSON.stringify(
-                  content,
-                  null,
-                  2
-                )}</div>
-              </div>
-            `
-          }
+          // Format Q&A content beautifully
+          formattedContent = `
+            <div style="margin-bottom: 15px; padding: 10px; background: #0a1f3d; border-radius: 6px;">
+              <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">❓ Question</div>
+              <div style="color: #e8eaed;">${this.formatMarkdownToHTML(
+                content.question || "No question found"
+              )}</div>
+            </div>
+            <div style="margin-bottom: 15px; padding: 10px; background: #0f2142; border-radius: 6px;">
+              <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💡 Answer</div>
+              <div style="color: #e8eaed; line-height: 1.5;">${this.formatMarkdownToHTML(
+                content.answer || "No answer found"
+              )}</div>
+            </div>
+          `
         }
 
-        window.raTutor.uiManager.showDataModal(
+        this.showDataModal(
           `🤖 ${type} Cache Content`,
           `
           <div style="margin-bottom: 15px; padding: 8px; background: #2c4a7c; border-radius: 4px; text-align: center;">
@@ -1530,7 +1484,7 @@ ${responseStructure}`
         )
       } catch (error) {
         console.error("Error viewing cache content:", error)
-        alert(`Error loading cache content: ${error.message}`)
+        alert("Error loading cache content!")
       }
     }
 
@@ -1762,22 +1716,26 @@ ANSWER:`
                     </div>
                 </div>
                 
+                <!-- Progress Stats Section - Above Settings -->
+                <div class="tutor-stats" style="position: absolute; bottom: 120px; left: 0; right: 0; padding: 10px 15px; border-top: 1px solid #2c4a7c; background: #0a1f3d; border-bottom: 1px solid #2c4a7c;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <strong style="color: #7198f8; font-size: 12px;">📊 Stats</strong>
+                        <button id="toggle-stats" style="background: none; border: none; color: #7198f8; cursor: pointer; font-size: 12px;">▼</button>
+                    </div>
+                    <div id="stats-content" style="display: none;">
+                        <div id="live-stats" style="color: #e8eaed; line-height: 1.4; font-size: 12px;">
+                            Loading...
+                        </div>
+                    </div>
+                </div>
                 
-                <!-- Settings Section - Combined with Stats -->
+                <!-- Settings Section - Fixed above footer -->
                 <div class="tutor-settings" style="position: absolute; bottom: 60px; left: 0; right: 0; padding: 12px 15px; background: #0f2544; font-size: 11px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong style="color: #7198f8; font-size: 12px;">⚙️ Settings & Stats</strong>
+                        <strong style="color: #7198f8; font-size: 12px;">⚙️ Settings</strong>
                         <button id="toggle-settings" style="background: none; border: none; color: #7198f8; cursor: pointer; font-size: 14px;">▼</button>
                     </div>
                     <div id="settings-content" style="display: none;">
-                        <!-- Stats Summary First -->
-                        <div style="margin-bottom: 12px; padding: 8px; background: #1a3a6b; border-radius: 6px;">
-                            <div style="color: #b0bec5; margin-bottom: 6px;"><strong>📊 Usage Stats</strong></div>
-                            <div id="live-stats" style="color: #e8eaed; line-height: 1.4; font-size: 11px;">
-                                Loading...
-                            </div>
-                        </div>
-                        
                         <!-- API Key Management -->
                         <div style="margin-bottom: 12px; padding: 8px; background: #1a3a6b; border-radius: 6px;">
                             <div style="color: #b0bec5; margin-bottom: 6px;"><strong>🔑 API Key Status</strong></div>
@@ -1798,8 +1756,8 @@ ANSWER:`
                             
                             <!-- View/Export Section -->
                             <div style="margin-bottom: 8px; padding: 6px; background: #123262; border-radius: 4px;">
-                                <button data-action="view-data-overview" style="padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px; margin-right: 6px; margin-bottom: 4px;">
-                                    📊 Review Data by Day
+                                <button data-action="view-all-data" style="padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px; margin-right: 6px; margin-bottom: 4px;">
+                                    📊 View All Data
                                 </button>
                                 <button data-action="export-data" style="padding: 4px 8px; background: #6f42c1; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
                                     📤 Export Data
@@ -1822,13 +1780,12 @@ ANSWER:`
                 
                 <!-- Attribution Footer - Fixed to bottom -->
                 <div class="tutor-footer" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 10px 15px; border-top: 1px solid #2c4a7c; background: #0f2142; font-size: 11px; color: #95a5a6; text-align: center; line-height: 1.4;">
-                    Made with ❤️ for radiology by 
+                    Made with ❤️ for Radiology Assistant by Simon Rekanovic<br>
                     <a href="https://www.simonrekanovic.com" target="_blank" style="color: #7198f8; text-decoration: none;">simonrekanovic.com</a> • 
                     <a href="https://www.linkedin.com/in/simonrekanovic" target="_blank" style="color: #7198f8; text-decoration: none;">LinkedIn</a><br>
                     <span style="font-size: 10px; color: #7f8c8d;">v${
                       GM.info ? GM.info.script.version : "0.0.1"
-                    }
-                    <strong>CAUTION: AI may generate incorrect or misleading information. Always verify with reliable sources.</strong> </span>
+                    }</span>
                 </div>
             `
 
@@ -1919,9 +1876,9 @@ ANSWER:`
           this.showApiKeySetup()
         } else if (e.target.dataset.action === "test-api-key") {
           this.testApiKey()
-        } else if (e.target.dataset.action === "view-data-overview") {
-          console.log("� View data overview clicked")
-          this.showDataOverview()
+        } else if (e.target.dataset.action === "view-all-data") {
+          console.log("🔍 View all data clicked")
+          this.showAllDataViewer()
         } else if (e.target.dataset.action === "export-data") {
           console.log("📤 Export data clicked")
           this.exportAllData()
@@ -1934,7 +1891,15 @@ ANSWER:`
         }
       })
 
-      // Settings panel toggle (now includes stats)
+      // Simple toggle for stats and settings sections (original design)
+      const statsHeader = panel.querySelector(".tutor-stats")
+      if (statsHeader) {
+        const toggleStats = statsHeader.querySelector("#toggle-stats")
+        if (toggleStats) {
+          toggleStats.addEventListener("click", () => this.toggleStats())
+        }
+      }
+
       const settingsHeader = panel.querySelector(".tutor-settings")
       if (settingsHeader) {
         const toggleSettings = settingsHeader.querySelector("#toggle-settings")
@@ -1943,7 +1908,8 @@ ANSWER:`
         }
       }
 
-      // Initialize settings content (which now includes stats)
+      // Initialize stats and settings content
+      this.updateLiveStats()
       this.updateSettingsContent()
     }
 
@@ -2282,18 +2248,6 @@ ANSWER:`
             if (showHistoryButton) {
               showHistoryButton.style.background = "#ffc107"
               showHistoryButton.textContent = "📜 New History!"
-
-              // If history content is currently visible and showing "no questions" message, refresh it
-              if (historyContent.style.display === "block") {
-                const pageUrl = window.location.pathname
-                const updatedHistory = await this.aiTutor.getQAHistory(pageUrl)
-                if (updatedHistory.length > 0) {
-                  // Auto-refresh the history display to show the new Q&A
-                  showHistoryButton.click() // This will hide current content
-                  setTimeout(() => showHistoryButton.click(), 100) // Then show updated content
-                }
-              }
-
               setTimeout(() => {
                 showHistoryButton.style.background = "#17a2b8"
                 showHistoryButton.textContent = "📜 View History"
@@ -2470,7 +2424,8 @@ ANSWER:`
                 </div>
             `
 
-      // Settings content is now updated only when opened, not continuously
+      // Update stats
+      this.updateLiveStats()
     }
 
     switchTab(tabName) {
@@ -2717,10 +2672,26 @@ ANSWER:`
     }
 
     // ========================================
-    // ⚙️ COMBINED SETTINGS & STATS PANEL
+    // 📊 MODERN STATS & SETTINGS PANEL METHODS
     // ========================================
 
-    // Combined toggle for settings panel (now includes stats)
+    // Simple toggle for combined stats and settings section
+    toggleStats() {
+      const statsContent = document.getElementById("stats-content")
+      const toggleButton = document.getElementById("toggle-stats")
+
+      if (statsContent.style.display === "none") {
+        statsContent.style.display = "block"
+        toggleButton.textContent = "▲"
+        // Update stats only when opened - not continuously
+        this.updateLiveStats()
+      } else {
+        statsContent.style.display = "none"
+        toggleButton.textContent = "▼"
+      }
+    }
+
+    // Simple toggle for settings section
     toggleSettings() {
       const settingsContent = document.getElementById("settings-content")
       const toggleButton = document.getElementById("toggle-settings")
@@ -2728,7 +2699,7 @@ ANSWER:`
       if (settingsContent.style.display === "none") {
         settingsContent.style.display = "block"
         toggleButton.textContent = "▲"
-        // Update both settings and stats when opened
+        // Update settings only when opened - not continuously
         this.updateSettingsContent()
       } else {
         settingsContent.style.display = "none"
@@ -2736,8 +2707,8 @@ ANSWER:`
       }
     }
 
-    async updateSettingsContent() {
-      // Update stats first
+    // Optimized stats update with caching and throttling
+    updateLiveStats() {
       const summary = this.progressTracker.getProgressSummary()
 
       // Format last API call time in EU format (DD.MM.YYYY HH:MM)
@@ -2754,18 +2725,20 @@ ANSWER:`
             .replace(",", "")
         : "Never"
 
-      // Update stats
+      // Update stats directly without caching since it's on-demand
       const statsHTML = `
-        📊 Pages today: ${summary.todayPagesRead}<br>
-        🤖 AI calls: ${summary.totalApiCalls}<br>
-        🕐 Last answer: ${lastApiTime}
+        � Pages viewed today: ${summary.todayPagesRead}<br>
+        🤖 API calls total: ${summary.totalApiCalls}<br>
+        🕐 Last AI answer: ${lastApiTime}
       `
 
       const liveStats = document.getElementById("live-stats")
       if (liveStats) {
         liveStats.innerHTML = statsHTML
       }
+    }
 
+    async updateSettingsContent() {
       // Update API key status
       const apiKeyStatus = document.getElementById("api-key-status")
       if (apiKeyStatus) {
@@ -2774,346 +2747,8 @@ ANSWER:`
           ? `✅ Configured: ${this.aiTutor.apiKey.substring(0, 8)}...****`
           : "❌ Not configured"
       }
-    }
 
-    async showDataOverview() {
-      console.log("📊 showDataOverview called")
-      try {
-        // Get all data to calculate overview stats
-        const allGMKeys = await GM.listValues()
-        const appDataKeys = allGMKeys.filter(key =>
-          key.startsWith("ra_tutor_gdpr_")
-        )
-        const aiCacheKeys = allGMKeys.filter(key => key.startsWith("ai_cache_"))
-
-        // Calculate totals
-        let totalQAEntries = 0
-        let totalSummaries = 0
-        let daysWithActivity = new Set()
-        let pagesVisited = 0
-
-        // Load reading progress to get page count
-        try {
-          const readingProgress =
-            await this.progressTracker.dataManager.loadData(
-              "reading_progress",
-              {}
-            )
-          if (readingProgress.dailyPagesRead) {
-            Object.entries(readingProgress.dailyPagesRead).forEach(
-              ([date, count]) => {
-                if (count > 0) {
-                  daysWithActivity.add(date)
-                  pagesVisited += count
-                }
-              }
-            )
-          }
-        } catch (error) {
-          console.warn("Error loading reading progress:", error)
-        }
-
-        // Count Q&A entries by loading qa_history keys
-        for (const key of appDataKeys) {
-          if (key.includes("qa_history_")) {
-            try {
-              const cleanKey = key.replace("ra_tutor_gdpr_", "")
-              const history = await this.progressTracker.dataManager.loadData(
-                cleanKey,
-                []
-              )
-              if (Array.isArray(history)) {
-                totalQAEntries += history.length
-                // Add dates from Q&A history
-                history.forEach(entry => {
-                  if (entry.timestamp) {
-                    const date = new Date(entry.timestamp)
-                      .toISOString()
-                      .split("T")[0]
-                    daysWithActivity.add(date)
-                  }
-                })
-              }
-            } catch (error) {
-              console.warn("Error loading Q&A history:", error)
-            }
-          }
-        }
-
-        // Count summaries from AI cache
-        for (const key of aiCacheKeys) {
-          if (key.startsWith("ai_cache_summary_")) {
-            totalSummaries++
-            // Add dates from cache timestamps
-            try {
-              const cached = await GM.getValue(key, null)
-              if (cached) {
-                const parsedCache = JSON.parse(cached)
-                if (parsedCache.timestamp) {
-                  const date = new Date(parsedCache.timestamp)
-                    .toISOString()
-                    .split("T")[0]
-                  daysWithActivity.add(date)
-                }
-              }
-            } catch (error) {
-              console.warn("Error parsing cache timestamp:", error)
-            }
-          }
-        }
-
-        // Create day-by-day activity data
-        const activityByDate = await this.getActivityByDate()
-
-        this.showDataModal(
-          "📊 Learning Activity Overview",
-          `
-          <div style="background: #1a3a6b; padding: 15px; border-radius: 8px; margin: 10px 0;">
-            <strong>📈 Your Learning Journey:</strong><br>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-              <div style="background: #123262; padding: 10px; border-radius: 6px; text-align: center;">
-                <div style="font-size: 18px; color: #7198f8; font-weight: bold;">${daysWithActivity.size}</div>
-                <div style="font-size: 11px; color: #b0bec5;">Active Days</div>
-              </div>
-              <div style="background: #123262; padding: 10px; border-radius: 6px; text-align: center;">
-                <div style="font-size: 18px; color: #7198f8; font-weight: bold;">${pagesVisited}</div>
-                <div style="font-size: 11px; color: #b0bec5;">Pages Read</div>
-              </div>
-              <div style="background: #123262; padding: 10px; border-radius: 6px; text-align: center;">
-                <div style="font-size: 18px; color: #7198f8; font-weight: bold;">${totalQAEntries}</div>
-                <div style="font-size: 11px; color: #b0bec5;">Questions Asked</div>
-              </div>
-              <div style="background: #123262; padding: 10px; border-radius: 6px; text-align: center;">
-                <div style="font-size: 18px; color: #7198f8; font-weight: bold;">${totalSummaries}</div>
-                <div style="font-size: 11px; color: #b0bec5;">AI Summaries</div>
-              </div>
-            </div>
-          </div>
-          
-          <div style="margin: 15px 0;">
-            <strong style="color: #7198f8;">📅 Activity by Day:</strong>
-            <div style="max-height: 400px; overflow-y: auto; margin-top: 10px;">
-              ${activityByDate}
-            </div>
-          </div>
-        `
-        )
-      } catch (error) {
-        console.error("📊 Error in showDataOverview:", error)
-        alert(`❌ Error viewing data overview: ${error.message}`)
-      }
-    }
-
-    async getActivityByDate() {
-      const activityMap = new Map()
-
-      try {
-        // Get Q&A history by date
-        const allGMKeys = await GM.listValues()
-        const appDataKeys = allGMKeys.filter(
-          key => key.startsWith("ra_tutor_gdpr_") && key.includes("qa_history_")
-        )
-
-        for (const key of appDataKeys) {
-          try {
-            const cleanKey = key.replace("ra_tutor_gdpr_", "")
-            const history = await this.progressTracker.dataManager.loadData(
-              cleanKey,
-              []
-            )
-
-            if (Array.isArray(history)) {
-              history.forEach(entry => {
-                if (entry.timestamp && entry.question && entry.answer) {
-                  const date = new Date(entry.timestamp)
-                    .toISOString()
-                    .split("T")[0]
-                  if (!activityMap.has(date)) {
-                    activityMap.set(date, {
-                      questions: [],
-                      summaries: [],
-                      pages: 0,
-                    })
-                  }
-                  activityMap.get(date).questions.push({
-                    question: entry.question,
-                    answer: entry.answer,
-                    time: new Date(entry.timestamp).toLocaleString("en-GB", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    }),
-                    page: entry.pageTitle || "Unknown Page",
-                  })
-                }
-              })
-            }
-          } catch (error) {
-            console.warn("Error loading Q&A for date grouping:", error)
-          }
-        }
-
-        // Get summaries by date from AI cache
-        const aiCacheKeys = allGMKeys.filter(key =>
-          key.startsWith("ai_cache_summary_")
-        )
-        for (const key of aiCacheKeys) {
-          try {
-            const cached = await GM.getValue(key, null)
-            if (cached) {
-              const parsedCache = JSON.parse(cached)
-              if (parsedCache.timestamp && parsedCache.content) {
-                const date = new Date(parsedCache.timestamp)
-                  .toISOString()
-                  .split("T")[0]
-                if (!activityMap.has(date)) {
-                  activityMap.set(date, {
-                    questions: [],
-                    summaries: [],
-                    pages: 0,
-                  })
-                }
-
-                // Extract page info from cache key
-                const pageInfo =
-                  key.replace("ai_cache_summary_", "").split("_")[0] ||
-                  "Unknown Page"
-
-                activityMap.get(date).summaries.push({
-                  content: parsedCache.content,
-                  time: new Date(parsedCache.timestamp).toLocaleString(
-                    "en-GB",
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    }
-                  ),
-                  page: pageInfo,
-                  keyPoints: parsedCache.content.keyPoints?.length || 0,
-                })
-              }
-            }
-          } catch (error) {
-            console.warn("Error loading summary for date grouping:", error)
-          }
-        }
-
-        // Get page reading data
-        try {
-          const readingProgress =
-            await this.progressTracker.dataManager.loadData(
-              "reading_progress",
-              {}
-            )
-          if (readingProgress.dailyPagesRead) {
-            Object.entries(readingProgress.dailyPagesRead).forEach(
-              ([date, count]) => {
-                if (count > 0) {
-                  if (!activityMap.has(date)) {
-                    activityMap.set(date, {
-                      questions: [],
-                      summaries: [],
-                      pages: 0,
-                    })
-                  }
-                  activityMap.get(date).pages = count
-                }
-              }
-            )
-          }
-        } catch (error) {
-          console.warn("Error loading reading progress for dates:", error)
-        }
-
-        // Sort dates descending (newest first)
-        const sortedDates = Array.from(activityMap.keys()).sort((a, b) =>
-          b.localeCompare(a)
-        )
-
-        if (sortedDates.length === 0) {
-          return `
-            <div style="padding: 20px; text-align: center; color: #b0bec5;">
-              📅 No learning activity recorded yet.<br>
-              <span style="font-size: 11px;">Start by reading pages and asking questions!</span>
-            </div>
-          `
-        }
-
-        let html = ""
-        sortedDates.forEach(date => {
-          const activity = activityMap.get(date)
-          const formattedDate = new Date(date).toLocaleDateString("en-GB", {
-            weekday: "short",
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-          })
-
-          html += `
-            <div style="margin-bottom: 12px; border: 1px solid #2c4a7c; border-radius: 6px; overflow: hidden;">
-              <div style="background: #1a3a6b; padding: 8px; font-weight: bold; color: #7198f8;">
-                📅 ${formattedDate}
-                <span style="font-size: 11px; color: #b0bec5; margin-left: 10px;">
-                  ${activity.pages} pages • ${activity.questions.length} Q&A • ${activity.summaries.length} summaries
-                </span>
-              </div>
-              <div style="padding: 10px; background: #0f2142;">
-          `
-
-          // Show Q&A for this date
-          if (activity.questions.length > 0) {
-            html += `<div style="margin-bottom: 8px;"><strong style="color: #28a745;">❓ Questions (${activity.questions.length}):</strong></div>`
-            activity.questions.forEach(qa => {
-              html += `
-                <div style="margin-bottom: 8px; padding: 8px; background: #123262; border-radius: 4px; border-left: 3px solid #28a745;">
-                  <div style="font-size: 11px; color: #7198f8; margin-bottom: 4px;">
-                    🕐 ${qa.time} • 📄 ${qa.page.substring(0, 30)}${
-                qa.page.length > 30 ? "..." : ""
-              }
-                  </div>
-                  <div style="font-weight: bold; color: #e8eaed; margin-bottom: 4px; font-size: 12px;">
-                    Q: ${qa.question}
-                  </div>
-                  <div style="color: #b0bec5; font-size: 11px; line-height: 1.3;">
-                    A: ${qa.answer.substring(0, 150)}${
-                qa.answer.length > 150 ? "..." : ""
-              }
-                  </div>
-                </div>
-              `
-            })
-          }
-
-          // Show summaries for this date
-          if (activity.summaries.length > 0) {
-            html += `<div style="margin-bottom: 8px; margin-top: 12px;"><strong style="color: #ffc107;">📄 Summaries (${activity.summaries.length}):</strong></div>`
-            activity.summaries.forEach(summary => {
-              html += `
-                <div style="margin-bottom: 8px; padding: 8px; background: #123262; border-radius: 4px; border-left: 3px solid #ffc107;">
-                  <div style="font-size: 11px; color: #7198f8; margin-bottom: 4px;">
-                    🕐 ${summary.time} • 📄 ${summary.page.substring(0, 30)}${
-                summary.page.length > 30 ? "..." : ""
-              } • ${summary.keyPoints} points
-                  </div>
-                  <div style="color: #b0bec5; font-size: 11px;">
-                    Generated AI summary with ${
-                      summary.keyPoints
-                    } key learning points
-                  </div>
-                </div>
-              `
-            })
-          }
-
-          html += `</div></div>`
-        })
-
-        return html
-      } catch (error) {
-        console.error("Error generating activity by date:", error)
-        return `<div style="color: #dc3545;">Error loading activity data</div>`
-      }
+      // Settings content updated - no additional data needed
     }
 
     async testApiKey() {
@@ -3207,28 +2842,16 @@ ANSWER:`
             const cached = await GM.getValue(key, null)
             if (cached) {
               const parsedCache = JSON.parse(cached)
-              const cleanKey = key.replace("ai_cache_", "")
-              dataPreview[`AI_CACHE_${cleanKey}`] = {
+              dataPreview[`AI_CACHE_${key.replace("ai_cache_", "")}`] = {
                 content: parsedCache.content,
                 timestamp: parsedCache.timestamp,
-                age: this.aiTutor.formatTimeAgo(parsedCache.timestamp),
-                size: JSON.stringify(parsedCache.content).length,
-                type: cleanKey.startsWith("summary_")
-                  ? "Summary"
-                  : cleanKey.startsWith("qa_")
-                  ? "Q&A"
-                  : "Unknown",
-              }
-            } else {
-              dataPreview[`AI_CACHE_${key.replace("ai_cache_", "")}`] = {
-                error: "No cached data found",
+                age: this.formatTimeAgo(parsedCache.timestamp),
               }
             }
           } catch (error) {
             console.error("Error loading cache key:", key, error)
-            dataPreview[`AI_CACHE_${key.replace("ai_cache_", "")}`] = {
-              error: `Error loading cache: ${error.message}`,
-            }
+            dataPreview[`AI_CACHE_${key.replace("ai_cache_", "")}`] =
+              "Error loading cache"
           }
         }
 
@@ -3270,13 +2893,9 @@ ANSWER:`
           appDataEntries.forEach(([key, data]) => {
             const cleanKey = key.replace("APP_DATA_", "")
             if (cleanKey === "reading_progress") {
-              const today = new Date().toISOString().split("T")[0]
-              const todayPages = data.dailyPagesRead
-                ? data.dailyPagesRead[today] || 0
-                : 0
-              formattedData += `• Reading Progress: ${todayPages} pages today, ${
-                data.apiCallsTotal || 0
-              } API calls<br>`
+              formattedData += `• Reading Progress: ${
+                data.todayPagesRead || 0
+              } pages today, ${data.totalApiCalls || 0} API calls<br>`
             } else if (cleanKey.startsWith("qa_history_")) {
               // Q&A History entry
               const qaCount = Array.isArray(data) ? data.length : 0
@@ -3308,12 +2927,17 @@ ANSWER:`
 
           aiCacheEntries.forEach(([key, data]) => {
             const cacheKey = key.replace("AI_CACHE_", "")
-            if (data && typeof data === "object" && !data.error) {
-              formattedData += `• <button onclick="window.raTutor.uiManager.aiTutor.viewCacheContent('${cacheKey}', '${data.type}')" style="background: #7198f8; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 10px; margin-right: 6px;">View</button>${cacheKey}: ${data.type} (${data.age}, ${data.size} bytes)<br>`
-            } else if (data && data.error) {
-              formattedData += `• ${cacheKey}: ${data.error}<br>`
+            if (data && typeof data === "object") {
+              const type = cacheKey.startsWith("summary_")
+                ? "Summary"
+                : cacheKey.startsWith("qa_")
+                ? "Q&A"
+                : "Unknown"
+              formattedData += `• ${type}: ${data.age}, Size ${
+                JSON.stringify(data.content).length
+              } bytes<br>`
             } else {
-              formattedData += `• ${cacheKey}: Invalid data format<br>`
+              formattedData += `• ${cacheKey}: ${data}<br>`
             }
           })
           formattedData += `</div>`
@@ -3350,10 +2974,6 @@ ANSWER:`
         // Calculate Q&A statistics
         let totalQAEntries = 0
         let totalPages = 0
-        let totalSummaries = 0
-        let totalQACache = 0
-
-        // Count Q&A history entries
         Object.entries(dataPreview).forEach(([key, data]) => {
           if (key.startsWith("APP_DATA_qa_history_")) {
             totalPages++
@@ -3363,29 +2983,20 @@ ANSWER:`
           }
         })
 
-        // Count AI cache entries by type
-        Object.entries(dataPreview).forEach(([key, data]) => {
-          if (key.startsWith("AI_CACHE_")) {
-            if (data && data.type === "Summary") {
-              totalSummaries++
-            } else if (data && data.type === "Q&A") {
-              totalQACache++
-            }
-          }
-        })
-
         // Create modal to show data
         this.showDataModal(
           "📊 All Stored Data",
           `
           <div style="background: #1a3a6b; padding: 15px; border-radius: 8px; margin: 10px 0;">
-            <strong>📊 Storage Summary:</strong><br>
+            <strong>� Storage Summary:</strong><br>
             <strong>🔑 API Key:</strong> ${
               this.aiTutor.hasApiKey() ? "✅ Configured" : "❌ Not set"
             }<br>
             <strong>📦 Total Keys:</strong> ${allGMKeys.length}<br>
             <strong>❓ Q&A Entries:</strong> ${totalQAEntries} questions across ${totalPages} pages<br>
-            <strong>🤖 AI Cache:</strong> ${totalSummaries} summaries, ${totalQACache} Q&A responses<br>
+            <strong>🤖 AI Cache:</strong> ${
+              aiCacheEntries.length
+            } cached responses<br>
             <strong>💾 Estimated Size:</strong> ~${Math.round(
               totalSize / 1024
             )}KB
