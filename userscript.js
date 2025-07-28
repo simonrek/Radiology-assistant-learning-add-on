@@ -3063,22 +3063,48 @@ ANSWER:`
 
           // Show Q&A for this date
           if (activity.questions.length > 0) {
-            html += `<div style="margin-bottom: 8px;"><strong style="color: #28a745;">❓ Questions (${activity.questions.length}):</strong></div>`
-            activity.questions.forEach(qa => {
+            html += `<div style="margin-bottom: 8px;"><strong style="color: #28a745;">❓ Questions & Answers (${activity.questions.length}):</strong></div>`
+            activity.questions.forEach((qa, index) => {
+              const qaId = `qa-${date}-${index}`
+              const isLongAnswer = qa.answer.length > 200
+              const shortAnswer = qa.answer.substring(0, 200)
+
               html += `
-                <div style="margin-bottom: 8px; padding: 8px; background: #123262; border-radius: 4px; border-left: 3px solid #28a745;">
-                  <div style="font-size: 11px; color: #7198f8; margin-bottom: 4px;">
-                    🕐 ${qa.time} • 📄 ${qa.page.substring(0, 30)}${
-                qa.page.length > 30 ? "..." : ""
-              }
+                <div style="margin-bottom: 10px; padding: 10px; background: #123262; border-radius: 6px; border-left: 4px solid #28a745;">
+                  <div style="font-size: 11px; color: #7198f8; margin-bottom: 6px;">
+                    🕐 ${qa.time} • 📄 ${qa.page}
                   </div>
-                  <div style="font-weight: bold; color: #e8eaed; margin-bottom: 4px; font-size: 12px;">
-                    Q: ${qa.question}
+                  <div style="font-weight: bold; color: #7198f8; margin-bottom: 6px; font-size: 13px;">
+                    ❓ ${qa.question}
                   </div>
-                  <div style="color: #b0bec5; font-size: 11px; line-height: 1.3;">
-                    A: ${qa.answer.substring(0, 150)}${
-                qa.answer.length > 150 ? "..." : ""
-              }
+                  <div style="color: #e8eaed; font-size: 12px; line-height: 1.4; margin-bottom: 6px;">
+                    <strong>💡 Answer:</strong><br>
+                    <span id="${qaId}-short">${shortAnswer}${
+                isLongAnswer ? "..." : ""
+              }</span>
+                    ${
+                      isLongAnswer
+                        ? `
+                      <span id="${qaId}-full" style="display: none;">${qa.answer}</span>
+                      <button onclick="
+                        const short = document.getElementById('${qaId}-short');
+                        const full = document.getElementById('${qaId}-full');
+                        const btn = this;
+                        if (full.style.display === 'none') {
+                          short.style.display = 'none';
+                          full.style.display = 'inline';
+                          btn.textContent = '🔼 Show Less';
+                        } else {
+                          short.style.display = 'inline';
+                          full.style.display = 'none';
+                          btn.textContent = '🔽 Show Full Answer';
+                        }
+                      " style="background: #17a2b8; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 10px; cursor: pointer; margin-left: 8px;">
+                        🔽 Show Full Answer
+                      </button>
+                    `
+                        : ""
+                    }
                   </div>
                 </div>
               `
@@ -3087,19 +3113,42 @@ ANSWER:`
 
           // Show summaries for this date
           if (activity.summaries.length > 0) {
-            html += `<div style="margin-bottom: 8px; margin-top: 12px;"><strong style="color: #ffc107;">📄 Summaries (${activity.summaries.length}):</strong></div>`
-            activity.summaries.forEach(summary => {
+            html += `<div style="margin-bottom: 8px; margin-top: 12px;"><strong style="color: #ffc107;">📄 AI Summaries (${activity.summaries.length}):</strong></div>`
+            activity.summaries.forEach((summary, index) => {
+              const summaryId = `summary-${date}-${index}`
+              const content = summary.content
+
               html += `
-                <div style="margin-bottom: 8px; padding: 8px; background: #123262; border-radius: 4px; border-left: 3px solid #ffc107;">
-                  <div style="font-size: 11px; color: #7198f8; margin-bottom: 4px;">
-                    🕐 ${summary.time} • 📄 ${summary.page.substring(0, 30)}${
-                summary.page.length > 30 ? "..." : ""
-              } • ${summary.keyPoints} points
+                <div style="margin-bottom: 10px; padding: 10px; background: #123262; border-radius: 6px; border-left: 4px solid #ffc107;">
+                  <div style="font-size: 11px; color: #7198f8; margin-bottom: 6px;">
+                    🕐 ${summary.time} • 📄 ${summary.page}
                   </div>
-                  <div style="color: #b0bec5; font-size: 11px;">
+                  <div style="font-weight: bold; color: #ffc107; margin-bottom: 6px; font-size: 13px;">
+                    📄 AI Summary
+                  </div>
+                  <div id="${summaryId}-preview" style="color: #b0bec5; font-size: 11px; margin-bottom: 6px;">
                     Generated AI summary with ${
                       summary.keyPoints
                     } key learning points
+                    <button onclick="
+                      const preview = document.getElementById('${summaryId}-preview');
+                      const full = document.getElementById('${summaryId}-full');
+                      const btn = this;
+                      if (full.style.display === 'none') {
+                        preview.style.display = 'none';
+                        full.style.display = 'block';
+                        btn.textContent = '🔼 Hide Summary';
+                      } else {
+                        preview.style.display = 'block';
+                        full.style.display = 'none';
+                        btn.textContent = '📖 View Full Summary';
+                      }
+                    " style="background: #ffc107; color: black; border: none; border-radius: 3px; padding: 2px 6px; font-size: 10px; cursor: pointer; margin-left: 8px;">
+                      📖 View Full Summary
+                    </button>
+                  </div>
+                  <div id="${summaryId}-full" style="display: none; color: #e8eaed; font-size: 12px; line-height: 1.4;">
+                    ${this.formatSummaryContent(content)}
                   </div>
                 </div>
               `
@@ -3114,6 +3163,87 @@ ANSWER:`
         console.error("Error generating activity by date:", error)
         return `<div style="color: #dc3545;">Error loading activity data</div>`
       }
+    }
+
+    formatSummaryContent(summary) {
+      if (!summary) return "No content available"
+
+      let html = ""
+
+      // Reading time
+      if (summary.readingTime) {
+        html += `
+          <div style="margin-bottom: 8px; padding: 6px; background: #0f2142; border-radius: 4px;">
+            <strong style="color: #7198f8;">📄 Reading Time:</strong> ${summary.readingTime} min
+          </div>
+        `
+      }
+
+      // Key Points
+      if (summary.keyPoints && summary.keyPoints.length > 0) {
+        html += `
+          <div style="margin-bottom: 8px; padding: 6px; background: #0f2142; border-radius: 4px;">
+            <strong style="color: #7198f8;">🎯 Key Learning Points:</strong><br>
+            <div style="margin-top: 4px;">
+              ${summary.keyPoints.map(point => `• ${point}`).join("<br>")}
+            </div>
+          </div>
+        `
+      }
+
+      // Clinical Pearls
+      if (summary.clinicalPearls && summary.clinicalPearls.length > 0) {
+        html += `
+          <div style="margin-bottom: 8px; padding: 6px; background: #0f2142; border-radius: 4px;">
+            <strong style="color: #7198f8;">💎 Clinical Pearls:</strong><br>
+            <div style="margin-top: 4px;">
+              ${summary.clinicalPearls.map(pearl => `• ${pearl}`).join("<br>")}
+            </div>
+          </div>
+        `
+      }
+
+      // Differentials
+      if (summary.differentials && summary.differentials.length > 0) {
+        html += `
+          <div style="margin-bottom: 8px; padding: 6px; background: #0f2142; border-radius: 4px;">
+            <strong style="color: #7198f8;">🔍 Differential Diagnoses:</strong><br>
+            <div style="margin-top: 4px;">
+              ${summary.differentials.map(diff => `• ${diff}`).join("<br>")}
+            </div>
+          </div>
+        `
+      }
+
+      // Imaging Approach
+      if (summary.imagingApproach && summary.imagingApproach.length > 0) {
+        html += `
+          <div style="margin-bottom: 8px; padding: 6px; background: #0f2142; border-radius: 4px;">
+            <strong style="color: #7198f8;">📋 Imaging Approach:</strong><br>
+            <div style="margin-top: 4px;">
+              ${summary.imagingApproach
+                .map((step, index) => `${index + 1}. ${step}`)
+                .join("<br>")}
+            </div>
+          </div>
+        `
+      }
+
+      // Diagnostic Approach
+      if (summary.diagnosticApproach && summary.diagnosticApproach.length > 0) {
+        html += `
+          <div style="margin-bottom: 8px; padding: 6px; background: #0f2142; border-radius: 4px;">
+            <strong style="color: #7198f8;">🩺 Diagnostic Approach:</strong><br>
+            <div style="margin-top: 4px;">
+              ${summary.diagnosticApproach
+                .map((step, index) => `${index + 1}. ${step}`)
+                .join("<br>")}
+            </div>
+          </div>
+        `
+      }
+
+      return html || "Summary content not available"
     }
 
     async testApiKey() {
