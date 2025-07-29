@@ -1309,6 +1309,7 @@ ANSWER:`
     init() {
       this.injectStyles()
       this.createTutorPanel()
+      this.createScrollProgressBar()
       // Removed: this.bindEvents() - no more progress tracking
       // Removed: this.startPeriodicUpdates() - no more background updates
 
@@ -1328,6 +1329,158 @@ ANSWER:`
       GM.addStyle(CSS_STYLES)
     }
 
+    createScrollProgressBar() {
+      // Remove existing scroll bar if it exists
+      const existingScrollBar = document.getElementById("ra-scroll-progress")
+      if (existingScrollBar) {
+        existingScrollBar.remove()
+      }
+
+      // Get page content to calculate word count
+      const pageContent = this.aiTutor.extractPageContent()
+      const wordCount = pageContent ? pageContent.trim().split(/\s+/).length : 0
+      const readingTime = Math.ceil(wordCount / 50) // 50 words per minute for learning
+
+      // Create scroll progress container
+      const scrollContainer = document.createElement("div")
+      scrollContainer.id = "ra-scroll-progress"
+
+      Object.assign(scrollContainer.style, {
+        position: "fixed",
+        top: "0",
+        left: "0",
+        right: "0",
+        height: "25px",
+        background: "linear-gradient(135deg, #123262, #1a3a6b)",
+        border: "none",
+        boxShadow: "0 2px 10px rgba(0, 0, 0, 0.3)",
+        zIndex: "99997",
+        display: "flex",
+        alignItems: "center",
+        fontFamily:
+          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        fontSize: "11px",
+        color: "#e8eaed",
+      })
+
+      // Create word count and reading time info (left side)
+      const infoDiv = document.createElement("div")
+      infoDiv.style.cssText = `
+        padding: 0 12px;
+        background: rgba(113, 152, 248, 0.1);
+        border-radius: 0 15px 15px 0;
+        font-weight: bold;
+        min-width: 140px;
+        text-align: center;
+        border-right: 1px solid #7198f8;
+      `
+      infoDiv.innerHTML = `📄 ${wordCount.toLocaleString()} words • ${readingTime} min read`
+
+      // Create progress bar container (center/right)
+      const progressContainer = document.createElement("div")
+      progressContainer.style.cssText = `
+        flex: 1;
+        margin: 0 12px;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        overflow: hidden;
+      `
+
+      // Create progress bar fill
+      const progressFill = document.createElement("div")
+      progressFill.id = "ra-scroll-fill"
+      progressFill.style.cssText = `
+        height: 100%;
+        background: linear-gradient(90deg, #7198f8, #28a745);
+        border-radius: 4px;
+        width: 0%;
+        transition: width 0.1s ease-out;
+      `
+
+      progressContainer.appendChild(progressFill)
+      scrollContainer.appendChild(infoDiv)
+      scrollContainer.appendChild(progressContainer)
+
+      // Add to page
+      document.body.appendChild(scrollContainer)
+
+      // Add scroll listener to update progress
+      const updateScrollProgress = () => {
+        const scrollTop =
+          window.pageYOffset || document.documentElement.scrollTop
+        const docHeight =
+          document.documentElement.scrollHeight - window.innerHeight
+        const scrollPercent = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0
+
+        progressFill.style.width = `${Math.min(
+          100,
+          Math.max(0, scrollPercent)
+        )}%`
+      }
+
+      // Initial update and add listener
+      updateScrollProgress()
+      window.addEventListener("scroll", updateScrollProgress, { passive: true })
+
+      // Adjust page content to account for the scroll bar - target specific page header
+      const adjustPageContent = () => {
+        // Add margin to body
+        document.body.style.marginTop = "25px"
+
+        // Target the specific navbar with the exact selector path you provided
+        const specificNavbar = document.querySelector(
+          "body > nav.flex-wrap.px-4.fixed.w-full.z-20.top-0.bg-back, nav.flex-wrap.px-4.md\\:px-6.pt-2.fixed.w-full.z-20.top-0.bg-back"
+        )
+        if (specificNavbar) {
+          // Move it down by our scroll bar height
+          specificNavbar.style.top = "25px"
+          console.log("📍 Adjusted specific navbar with top-0 class")
+        }
+
+        // Also try a more general selector in case the above doesn't work
+        const fallbackNavbar = document.querySelector(
+          'nav[class*="flex-wrap"][class*="fixed"][class*="top-0"]'
+        )
+        if (fallbackNavbar && fallbackNavbar !== specificNavbar) {
+          fallbackNavbar.style.top = "25px"
+          console.log("📍 Adjusted navbar via fallback selector")
+        }
+
+        // Also adjust common content containers that might be positioned at top
+        const selectors = [
+          "#content",
+          ".content",
+          "main",
+          ".main",
+          "#main",
+          "article",
+          ".article",
+        ]
+        selectors.forEach(selector => {
+          const element = document.querySelector(selector)
+          if (element && !element.style.marginTop) {
+            element.style.marginTop = "25px"
+          }
+        })
+
+        // General fallback for any other fixed headers
+        const headers = document.querySelectorAll("header, .header, #header")
+        headers.forEach(header => {
+          if (
+            header.style.position === "fixed" ||
+            getComputedStyle(header).position === "fixed"
+          ) {
+            header.style.top = "25px"
+          }
+        })
+      }
+
+      // Apply immediately and after a short delay to catch dynamic content
+      adjustPageContent()
+      setTimeout(adjustPageContent, 500)
+    }
+
     createTutorPanel() {
       const panel = document.createElement("div")
       panel.id = "ra-tutor-panel"
@@ -1335,11 +1488,11 @@ ANSWER:`
       // Use direct style assignment like the working example
       Object.assign(panel.style, {
         position: "fixed",
-        top: "0",
+        top: "25px", // Add top padding to accommodate scroll bar
         right: "0",
-        width: "380px",
-        height: "100vh",
-        background: "linear-gradient(145deg, #123262, #1a3a6b)",
+        width: "360px",
+        height: "calc(100vh - 25px)", // Adjust height to account for top offset
+        background: "linear-gradient(145deg, #123262, #387593ff)",
         boxShadow: "-5px 0 20px rgba(0, 0, 0, 0.3)",
         zIndex: "99999",
         fontFamily:
@@ -1350,50 +1503,38 @@ ANSWER:`
         display: "flex",
         flexDirection: "column",
         transform: this.isMinimized
-          ? "translateX(calc(100% - 50px))"
+          ? "translateX(calc(100% - 10px))"
           : "translateX(0)",
       })
 
       panel.innerHTML = `
-                <div class="tutor-header" data-action="toggle">
-                    <span>🧠 AI Tutor</span>
-                    <span style="font-size: 12px;">✖️</span>
-                </div>
-                <div class="tutor-content">
-                    <div class="tab-buttons">
+                <div class="tutor-content" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                    <!-- <div class="tab-buttons" style="flex-shrink: 0;">
                         <button class="tab-button active" data-action="tab" data-tab="summary">Summary</button>
+
                         <button class="tab-button" data-action="tab" data-tab="quiz">Quiz</button>
-                    </div>
-                    
-                    <div id="summary-tab" class="tutor-tab active">
+                    </div> -->
+
+                    <div id="summary-tab" class="tutor-tab active" style="flex: 1; overflow-y: auto; min-height: 0; padding: 0 0px;">
                         <div id="summary-content">Loading summary...</div>
                     </div>
                     
-                    <div id="quiz-tab" class="tutor-tab">
+                    <!-- <div id="quiz-tab" class="tutor-tab">
                         <div id="quiz-content">
-                            <button data-action="generate-quiz" style="width: 100%; padding: 12px; background: linear-gradient(135deg, #7198f8 0%, #5577e6 100%); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                            <button data-action="generate-quiz" style="width: 100%; padding: 5px; background: linear-gradient(135deg, #7198f8 0%, #42a0d6ff 100%); color: white; border: none; border-radius: 8px; cursor: pointer;">
                                 🧠 Test My Knowledge
                             </button>
                         </div>
-                    </div>
+                    </div> -->
                 </div>
-                
-                
-                <!-- Settings Section - Combined with Stats -->
-                <div class="tutor-settings" style="position: absolute; bottom: 60px; left: 0; right: 0; padding: 12px 15px; background: #0f2544; font-size: 11px;">
+
+                <!-- Settings Section -->
+                <div class="tutor-settings" style="flex-shrink: 0; padding: 10px 12px; background: linear-gradient(145deg, #123262, #387593ff); font-size: 11px; border-top: 1px solid #2c4a7c;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong style="color: #7198f8; font-size: 12px;">⚙️ Settings & Stats</strong>
+                        <strong style="color: #7198f8; font-size: 12px;">⚙️ Settings</strong>
                         <button id="toggle-settings" style="background: none; border: none; color: #7198f8; cursor: pointer; font-size: 14px;">▼</button>
                     </div>
-                    <div id="settings-content" style="display: none;">
-                        <!-- Stats Summary First -->
-                        <div style="margin-bottom: 12px; padding: 8px; background: #1a3a6b; border-radius: 6px;">
-                            <div style="color: #b0bec5; margin-bottom: 6px;"><strong>📊 Usage Stats</strong></div>
-                            <div id="live-stats" style="color: #e8eaed; line-height: 1.4; font-size: 11px;">
-                                Loading...
-                            </div>
-                        </div>
-                        
+                    <div id="settings-content" style="display: none; max-height: 200px; overflow-y: auto;">
                         <!-- API Key Management -->
                         <div style="margin-bottom: 12px; padding: 8px; background: #1a3a6b; border-radius: 6px;">
                             <div style="color: #b0bec5; margin-bottom: 6px;"><strong>🔑 API Key Status</strong></div>
@@ -1437,7 +1578,7 @@ ANSWER:`
                 </div>
                 
                 <!-- Attribution Footer - Fixed to bottom -->
-                <div class="tutor-footer" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 10px 15px; border-top: 1px solid #2c4a7c; background: #0f2142; font-size: 11px; color: #95a5a6; text-align: center; line-height: 1.4;">
+                <div class="tutor-footer" style="flex-shrink: 0; padding: 10px 10px; border-top: 1px solid #2c4a7c; background: #0f2142; font-size: 11px; color: #95a5a6; text-align: center; line-height: 1.4;">
                     Made with ❤️ for radiology by 
                     <a href="https://www.simonrekanovic.com" target="_blank" style="color: #7198f8; text-decoration: none;">simonrekanovic.com</a> • 
                     <a href="https://www.linkedin.com/in/simonrekanovic" target="_blank" style="color: #7198f8; text-decoration: none;">LinkedIn</a><br>
@@ -1502,12 +1643,6 @@ ANSWER:`
     }
 
     addPanelEventListeners(panel) {
-      // Header toggle
-      const header = panel.querySelector('[data-action="toggle"]')
-      if (header) {
-        header.addEventListener("click", () => this.togglePanel())
-      }
-
       // Tab buttons
       const tabButtons = panel.querySelectorAll('[data-action="tab"]')
       tabButtons.forEach(button => {
@@ -1707,11 +1842,6 @@ ANSWER:`
         <div style="margin-top: 10px; padding: 10px; background: #0f2142; border-radius: 4px; color: #e8eaed; line-height: 1.4;">
           <div style="margin-bottom: 8px; padding: 4px 8px; background: #0a1f3d; border-radius: 4px; font-size: 9px; color: #7f8c8d; text-align: center;">
             AI Summary generated: ${currentTime}
-          </div>
-          
-          <div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2c4a7c;">
-            <strong style="color: #7198f8;">📄 Page Analysis</strong><br>
-            <strong>Est. Reading Time:</strong> ${summary.readingTime} min
           </div>`
 
       if (summary.keyPoints && summary.keyPoints.length > 0) {
@@ -2395,18 +2525,6 @@ ANSWER:`
         apiKeyStatus.innerHTML = hasKey
           ? `✅ Configured: ${this.aiTutor.apiKey.substring(0, 8)}...****`
           : "❌ Not configured"
-      }
-
-      // Update stats display - simplified
-      const liveStats = document.getElementById("live-stats")
-      if (liveStats) {
-        liveStats.innerHTML = `
-          📊 Extension loaded and ready<br>
-          🤖 AI features: ${
-            this.aiTutor.hasApiKey() ? "Available" : "Need API key"
-          }<br>
-          🕐 Status: Active
-        `
       }
     }
 
