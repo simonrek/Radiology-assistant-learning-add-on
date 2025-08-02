@@ -6,6 +6,8 @@ This guide will walk you through installing the **Radiology Assistant Personal T
 
 ### One-Click Install (Recommended)
 
+> ⚠️ **IMPORTANT**: This one-click installation requires a userscript manager to be already installed on your browser. If you don't have one yet, please follow the [platform-specific instructions](#-platform-specific-instructions) below first.
+
 If you already have a userscript manager installed:
 
 **[📥 Install Radiology Assistant Personal Tutor](https://raw.githubusercontent.com/simonrek/Radiology-assistant-learning-add-on/main/userscript.js)**
@@ -328,7 +330,7 @@ _Having trouble? Check our [troubleshooting section](#-troubleshooting-installat
 
 **Step 2: Install the Script**
 
-1. Click the [install link](https://raw.githubusercontent.com/simonrek/radiology-assistant-personal-tutor/main/userscript.js)
+1. Click the [install link](https://raw.githubusercontent.com/simonrek/Radiology-assistant-learning-add-on/main/userscript.js)
 2. Userscripts will prompt you to install
 3. Click "Install" to confirm
 
@@ -348,7 +350,7 @@ _Having trouble? Check our [troubleshooting section](#-troubleshooting-installat
 
 **Step 2: Install the Script**
 
-1. Click the [install link](https://raw.githubusercontent.com/simonrek/radiology-assistant-personal-tutor/main/userscript.js)
+1. Click the [install link](https://raw.githubusercontent.com/simonrek/Radiology-assistant-learning-add-on/main/userscript.js)
 2. Tampermonkey will open with the script content
 3. Click the "Install" button
 
@@ -368,7 +370,7 @@ _Having trouble? Check our [troubleshooting section](#-troubleshooting-installat
 
 **Step 2: Install the Script**
 
-1. Click the [install link](https://raw.githubusercontent.com/simonrek/radiology-assistant-personal-tutor/main/userscript.js)
+1. Click the [install link](https://raw.githubusercontent.com/simonrek/Radiology-assistant-learning-add-on/main/userscript.js)
 2. Tampermonkey will open with the script content
 3. Click the "Install" button
 
@@ -388,7 +390,7 @@ _Having trouble? Check our [troubleshooting section](#-troubleshooting-installat
 
 **Step 2: Install the Script**
 
-1. Click the [install link](https://raw.githubusercontent.com/simonrek/radiology-assistant-personal-tutor/main/userscript.js)
+1. Click the [install link](https://raw.githubusercontent.com/simonrek/Radiology-assistant-learning-add-on/main/userscript.js)
 2. Tampermonkey will open with the script content
 3. Click the "Install" button
 
@@ -406,7 +408,7 @@ If the automatic installation doesn't work, you can install manually:
 
 ### Step 1: Get the Script Code
 
-1. Visit the [userscript.js file](https://raw.githubusercontent.com/simonrek/radiology-assistant-personal-tutor/main/userscript.js)
+1. Visit the [userscript.js file](https://raw.githubusercontent.com/simonrek/Radiology-assistant-learning-add-on/main/userscript.js)
 2. Copy all the code (Ctrl+A, then Ctrl+C)
 
 ### Step 2: Create New Script in Manager
@@ -515,12 +517,12 @@ The script includes an auto-update mechanism that:
 If automatic updates fail:
 
 1. Delete the old script from your manager
-2. Install the latest version using the [install link](https://raw.githubusercontent.com/simonrek/radiology-assistant-personal-tutor/main/userscript.js)
+2. Install the latest version using the [install link](https://raw.githubusercontent.com/simonrek/Radiology-assistant-learning-add-on/main/userscript.js)
 3. Your progress data will be preserved
 
 ### Version History
 
-Check the [GitHub releases page](https://github.com/simonrek/radiology-assistant-personal-tutor/releases) for:
+Check the [GitHub releases page](https://github.com/simonrek/Radiology-assistant-learning-add-on/releases) for:
 
 - Latest version information
 - Update changelogs
@@ -532,8 +534,8 @@ Check the [GitHub releases page](https://github.com/simonrek/radiology-assistant
 
 ### Support Channels
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/simonrek/radiology-assistant-personal-tutor/issues)
-- **GitHub Discussions**: [Community support and questions](https://github.com/simonrek/radiology-assistant-personal-tutor/discussions)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/simonrek/Radiology-assistant-learning-add-on/issues)
+- **GitHub Discussions**: [Community support and questions](https://github.com/simonrek/Radiology-assistant-learning-add-on/discussions)
 - **Email Support**: [simon@simonrekanovic.com](mailto:simon@simonrekanovic.com)
 
 ### Before Requesting Support

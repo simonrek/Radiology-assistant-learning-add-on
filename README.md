@@ -105,7 +105,6 @@ Visit any Radiology Assistant article and look for the **🧠 AI Tutor** panel o
 ### Getting Help
 - Check the [Installation Guide](INSTALL.md) for detailed setup
 - Report issues on [GitHub Issues](https://github.com/simonrek/Radiology-assistant-learning-add-on/issues)
-- Contact: [simon@simonrekanovic.com](mailto:simon@simonrekanovic.com)  
 
 ## 📋 Documentation
 
@@ -127,7 +126,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 **Simon Rekanovic**
 - Website: [simonrekanovic.com](https://www.simonrekanovic.com)
 - LinkedIn: [linkedin.com/in/simonrekanovic](https://www.linkedin.com/in/simonrekanovic)
-- Email: [simon@simonrekanovic.com](mailto:simon@simonrekanovic.com)
 
 ---
 
