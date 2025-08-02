@@ -1,10 +1,9 @@
 /** @format */
-
 // ==UserScript==
 // @name         Radiology Assistant Personal Tutor
 // @namespace    https://github.com/simonrek/radiology-assistant-personal-tutor
-// @version      0.0.1
-// @description  GDPR-compliant AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress, get tested, and maximize learning efficiency with Mistral AI
+// @version      0.1.0
+// @description  GDPR-conscious AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress, get tested, and maximize learning efficiency with Mistral AI
 // @author       Simon Rekanovic
 // @homepage     https://github.com/simonrek/radiology-assistant-personal-tutor
 // @supportURL   https://github.com/simonrek/radiology-assistant-personal-tutor/issues

@@ -1,0 +1,15 @@
+# Ignore userscript files to prevent format tags
+userscript.js
+*.user.js
+
+# Ignore documentation files to prevent format tags
+README.md
+INSTALL.md
+CONTRIBUTING.md
+CHANGELOG.md
+QUICKSTART.md
+
+# Ignore other files that shouldn't be formatted
+*.meta.js
+assets/
+.git/
