@@ -4,6 +4,14 @@ All notable changes to the **Radiology Assistant Personal Tutor** will be docume
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2025-08-04 - API error logging improvement and API initial setup made more user friendly🚀
+
+### 🐛 Fixed
+- Errors in handling the users UI
+- A minor bug fix in API setup
+- Removed overuse of logging for setup/development - made many of them optional for developers to use at their own wish.
+- Fixed data retriveal.
+
 ## [0.1.0] - 2025-08-02 - Major Feature Release 🚀
 
 ### 🎉 Added

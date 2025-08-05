@@ -11,3 +11,4 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 quizgeneration.js
+consoleDataAnalyser.js

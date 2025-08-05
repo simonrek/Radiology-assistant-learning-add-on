@@ -3,8 +3,8 @@
 // ==UserScript==
 // @name         Radiology Assistant Personal Tutor
 // @namespace    https://github.com/simonrek/Radiology-assistant-learning-add-on
-// @version      0.1.0
-// @description  Latest update: 2.8.2025 ABOUT: GDPR-conscious AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress and maximize learning efficiency with Mistral AI.
+// @version      0.1.1
+// @description  Latest update: 6.8.2025 ABOUT: GDPR-conscious AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress and maximize learning efficiency with Mistral AI.
 // @author       Simon Rekanovic
 // @homepage     https://github.com/simonrek/Radiology-assistant-learning-add-on
 // @supportURL   https://github.com/simonrek/Radiology-assistant-learning-add-on/issues
@@ -29,7 +29,6 @@
 // ========================================
 // Compatible with: Safari Userscripts, Tampermonkey
 // Uses modern async GM.* API supported by all platforms
-console.log("🔧 Cross-platform userscript engine loaded")
 ;(function () {
   "use strict"
 
@@ -280,14 +279,14 @@ console.log("🔧 Cross-platform userscript engine loaded")
       this.storagePrefix = CONFIG.STORAGE_PREFIX
 
       console.log(
-        "🔒 Initializing GM-only data storage (no external transmission)"
+        "🔒 Initializing internal only data storage (no external transmission)"
       )
     }
 
     // Save data locally only (no external transmission)
     async saveData(key, data) {
       try {
-        console.log(`🔒 Saving data for key: ${key}`, data)
+        //console.log(`🔒 Saving data for key: ${key}`, data)
 
         if (!CONFIG.SAVE_PROGRESS_LOCALLY) {
           console.log("🔒 Data saving disabled by user configuration")
@@ -313,10 +312,9 @@ console.log("🔧 Cross-platform userscript engine loaded")
 
         // Always use GM storage for consistency
         const fullKey = this.storagePrefix + key
-        console.log(`🔒 Using GM.setValue for key: ${fullKey}`)
         await GM.setValue(fullKey, gdprData)
 
-        console.log(`🔒 Data saved locally for key: ${key}`)
+        //console.log(`🔒 Data saved locally for key: ${key}`)
       } catch (error) {
         console.error("🔒 Error saving local data:", error)
       }
@@ -325,15 +323,15 @@ console.log("🔧 Cross-platform userscript engine loaded")
     //Load data from local storage only
     async loadData(key, defaultValue = null) {
       try {
-        console.log(`🔒 Loading data for key: ${key}`)
+        //console.log(`🔒 Loading data for key: ${key}`)
 
         // Always use GM storage for consistency
         const fullKey = this.storagePrefix + key
-        console.log(`🔒 Using GM.getValue for key: ${fullKey}`)
+        //console.log(`🔒 Using GM.getValue for key: ${fullKey}`)
         const data = await GM.getValue(fullKey, null)
-        console.log(`🔒 GM.getValue result:`, data)
+        //console.log(`🔒 GM.getValue result:`, data)
 
-        console.log(`🔒 Loaded data for key ${key}:`, data)
+        //console.log(`🔒 Loaded data for key ${key}:`, data)
 
         if (data) {
           // Check data retention policy
@@ -374,7 +372,7 @@ console.log("🔧 Cross-platform userscript engine loaded")
       }
     }
 
-    // GDPR: Delete local data
+    // Delete local data
     async deleteData(key) {
       try {
         console.log(`🔒 Deleting data for key: ${key}`)
@@ -392,15 +390,15 @@ console.log("🔧 Cross-platform userscript engine loaded")
     // GDPR: Get all locally stored keys
     async getAllKeys() {
       try {
-        console.log("🔧 getAllKeys: Getting all GM storage keys...")
+        //console.log("🔧 getAllKeys: Getting all GM storage keys...")
 
         const allGMKeys = await GM.listValues()
-        console.log("🔧 getAllKeys: All GM keys found:", allGMKeys)
+        // console.log("🔧 getAllKeys: All GM keys found:", allGMKeys)
 
         const filteredKeys = allGMKeys.filter(key =>
           key.startsWith(this.storagePrefix)
         )
-        console.log("🔧 getAllKeys: Filtered keys with prefix:", filteredKeys)
+        //console.log("🔧 getAllKeys: Filtered keys with prefix:", filteredKeys)
 
         return filteredKeys
       } catch (error) {
@@ -409,7 +407,7 @@ console.log("🔧 Cross-platform userscript engine loaded")
       }
     }
 
-    // GDPR: Clear all user data (right to erasure)
+    // Clear all user data (right to erasure)
     async clearAllUserData() {
       try {
         console.log("🔒 GDPR: Clearing all user data...")
@@ -457,22 +455,20 @@ console.log("🔧 Cross-platform userscript engine loaded")
 
     async initialize() {
       try {
-        console.log("🔑 AITutor.initialize() starting...")
+        // console.log("🔑 AITutor.initialize() starting...")
         // Get API key from user configuration or local storage
         this.apiKey =
           USER_CONFIG.MISTRAL_API_KEY ||
           (await GM.getValue("mistral_api_key", null))
+        //console.log("🔑 API key sources checked:",
+        // {fromConfig: Boolean(USER_CONFIG.MISTRAL_API_KEY),
+        // fromStorage: Boolean(await GM.getValue("mistral_api_key", null)),
+        // finalKey: Boolean(this.apiKey)})
 
-        console.log("🔑 API key sources checked:", {
-          fromConfig: Boolean(USER_CONFIG.MISTRAL_API_KEY),
-          fromStorage: Boolean(await GM.getValue("mistral_api_key", null)),
-          finalKey: Boolean(this.apiKey),
-        })
-
-        console.log(
-          "🔒 AI Tutor API key loaded:",
-          this.hasApiKey() ? "✅ Available" : "❌ Not configured"
-        )
+        // console.log(
+        //  "🔒 AI Tutor API key loaded:",
+        //  this.hasApiKey() ? "✅ Available" : "❌ Not configured"
+        //)
       } catch (error) {
         console.warn("🔒 Error loading API key:", error)
         this.apiKey = null
@@ -481,12 +477,12 @@ console.log("🔧 Cross-platform userscript engine loaded")
 
     hasApiKey() {
       const hasKey = Boolean(this.apiKey && this.apiKey.trim())
-      console.log("🔑 hasApiKey() check:", {
-        apiKeyExists: Boolean(this.apiKey),
-        apiKeyLength: this.apiKey ? this.apiKey.length : 0,
-        apiKeyTrimmed: this.apiKey ? this.apiKey.trim().length : 0,
-        result: hasKey,
-      })
+      //console.log("🔑 hasApiKey() check:", {
+      // apiKeyExists: Boolean(this.apiKey),
+      // apiKeyLength: this.apiKey ? this.apiKey.length : 0,
+      // apiKeyTrimmed: this.apiKey ? this.apiKey.trim().length : 0,
+      // result: hasKey,
+      //})
       return hasKey
     }
 
@@ -584,11 +580,11 @@ console.log("🔧 Cross-platform userscript engine loaded")
       }
 
       try {
-        console.log("🚀 Generating fresh AI summary via Mistral", {
-          pageUrl,
-          options,
-          contentLength: content.length,
-        })
+        //console.log("🚀 Generating fresh AI summary via Mistral", {
+        //  pageUrl,
+        //  options,
+        //  contentLength: content.length,
+        //})
 
         const length = options.length || "short"
         const focus = options.focus || "key_learning_points"
@@ -636,7 +632,22 @@ console.log("🔧 Cross-platform userscript engine loaded")
         }
       } catch (error) {
         console.error("❌ Error generating AI summary:", error)
-        throw error
+
+        // If it's an API error with detailed info, preserve that
+        if (error.apiErrorDetails) {
+          throw error
+        }
+
+        // Otherwise create a generic error
+        const genericError = new Error("Failed to generate summary")
+        genericError.apiErrorDetails = {
+          type: "generic",
+          title: "❌ Summary Generation Failed",
+          message: "Unable to generate AI summary for this content.",
+          suggestion: "Please try again or check your API key",
+          technical: error.message || "Unknown error",
+        }
+        throw genericError
       }
     }
 
@@ -747,15 +758,15 @@ ${responseStructure}`
 
     parseSummaryResponse(content) {
       // First, log the raw content to see what we're getting from AI
-      console.log(
-        "🤖 RAW AI Response (first 1000 chars):",
-        content.substring(0, 1000)
-      )
-      console.log(
-        "🤖 RAW AI Response (last 500 chars):",
-        content.substring(content.length - 500)
-      )
-      console.log("🤖 RAW AI Response total length:", content.length)
+      //console.log(
+      //  "🤖 RAW AI Response (first 1000 chars):",
+      //  content.substring(0, 1000)
+      //)
+      //console.log(
+      //  "🤖 RAW AI Response (last 500 chars):",
+      //  content.substring(content.length - 500)
+      //)
+      //console.log("🤖 RAW AI Response total length:", content.length)
 
       try {
         // Clean content: remove markdown code blocks and extra formatting
@@ -774,16 +785,16 @@ ${responseStructure}`
           cleanContent = jsonMatch[0]
         }
 
-        console.log("🔍 Cleaned content for JSON parsing:", cleanContent)
+        // console.log("🔍 Cleaned content for JSON parsing:", cleanContent)
 
         // Try to parse as JSON (expecting complete response without truncation)
         const parsed = JSON.parse(cleanContent)
 
-        console.log("🔍 === PARSED JSON CONTENT ANALYSIS ===")
+        // CONTENT ANALYSIS ===")
         console.log("📊 Parsed Object Keys:", Object.keys(parsed))
 
         // 🎯 PURE DYNAMIC CONTENT - Use AI's structure exactly as returned
-        // No mapping, no forcing into predefined fields - just use what the AI gave us
+        // No mapping or predefined fields
 
         const result = {
           // Store the original data structure completely unchanged
@@ -803,59 +814,24 @@ ${responseStructure}`
               content: value,
               emoji: this.getEmojiForField(key),
             })
-            console.log(
-              `📋 Dynamic section created: "${sectionTitle}" with ${value.length} items`
-            )
+            //console.log(
+            //  `📋 Dynamic section created: "${sectionTitle}" with ${value.length} items`
+            //)
           }
         })
 
-        console.log("🔍 === PURE DYNAMIC RESULTS ===")
-        console.log(
-          "📊 Total Dynamic Sections:",
-          result._dynamicSections.length
-        )
-        console.log(
-          "📊 Section Titles:",
-          result._dynamicSections.map(s => s.title)
-        )
-        console.log("📊 Original Data Preserved:", Object.keys(result._rawData))
+        //console.log("🔍 === PURE DYNAMIC RESULTS ===")
+        //console.log(
+        //  "📊 Total Dynamic Sections:",
+        //  result._dynamicSections.length
+        //)
+        //console.log(
+        //  "📊 Section Titles:",
+        //  result._dynamicSections.map(s => s.title)
+        //)
+        //console.log("📊 Original Data Preserved:", Object.keys(result._rawData))
 
-        // 🔄 BACKWARD COMPATIBILITY - Handle old cached summaries
-        if (result._dynamicSections.length === 0) {
-          console.log(
-            "📋 No dynamic sections found, checking for legacy structure..."
-          )
-
-          // Check if this is an old-format summary with keyPoints, clinicalPearls, etc.
-          const legacyFields = [
-            "keyPoints",
-            "clinicalPearls",
-            "differentials",
-            "imagingApproach",
-            "diagnosticApproach",
-            "focusAreas",
-          ]
-          legacyFields.forEach(field => {
-            if (
-              parsed[field] &&
-              Array.isArray(parsed[field]) &&
-              parsed[field].length > 0
-            ) {
-              const sectionTitle = this.formatFieldNameAsTitle(field)
-              result._dynamicSections.push({
-                originalKey: field,
-                title: sectionTitle,
-                content: parsed[field],
-                emoji: this.getEmojiForField(field),
-              })
-              console.log(
-                `📋 Converted legacy field '${field}' to dynamic section: "${sectionTitle}"`
-              )
-            }
-          })
-        }
-
-        console.log("🔍 === END PURE DYNAMIC PARSING ===")
+        // console.log("🔍 === END PURE DYNAMIC PARSING ===")
 
         return result
       } catch (e) {
@@ -874,21 +850,21 @@ ${responseStructure}`
         )
 
         if (keyPointsMatch) {
-          console.log("🔧 Found keyPoints in partial JSON")
+          //console.log("🔧 Found keyPoints in partial JSON")
           const keyPointsText = keyPointsMatch[1]
           const points = keyPointsText.match(/"([^"]+)"/g) || []
           keyPoints.push(...points.map(p => p.replace(/"/g, "")))
         }
 
         if (pearlsMatch) {
-          console.log("🔧 Found clinicalPearls in partial JSON")
+          //console.log("🔧 Found clinicalPearls in partial JSON")
           const pearlsText = pearlsMatch[1]
           const pearls = pearlsText.match(/"([^"]+)"/g) || []
           clinicalPearls.push(...pearls.map(p => p.replace(/"/g, "")))
         }
 
         if (differentialsMatch) {
-          console.log("🔧 Found differentials in partial JSON")
+          //console.log("🔧 Found differentials in partial JSON")
           const diffsText = differentialsMatch[1]
           const diffs = diffsText.match(/"([^"]+)"/g) || []
           differentials.push(...diffs.map(p => p.replace(/"/g, "")))
@@ -900,7 +876,7 @@ ${responseStructure}`
           clinicalPearls.length === 0 &&
           differentials.length === 0
         ) {
-          console.log("🔧 Using line-by-line fallback parsing")
+          //console.log("🔧 Using line-by-line fallback parsing")
           const lines = content.split("\n").filter(line => line.trim())
           let currentSection = "key"
 
@@ -948,11 +924,11 @@ ${responseStructure}`
           }
         }
 
-        console.log("🔧 Fallback extraction results:", {
-          keyPoints: keyPoints.length,
-          clinicalPearls: clinicalPearls.length,
-          differentials: differentials.length,
-        })
+        //console.log("🔧 Fallback extraction results:", {
+        //  keyPoints: keyPoints.length,
+        //  clinicalPearls: clinicalPearls.length,
+        //  differentials: differentials.length,
+        //})
 
         return {
           keyPoints: keyPoints.slice(0, 6),
@@ -981,7 +957,7 @@ ${responseStructure}`
         }
 
         await GM.setValue(responseKey, JSON.stringify(responseData))
-        console.log(`🔄 Unified AI response stored: ${type} for ${pageUrl}`)
+        //console.log(`🔄 Unified AI response stored: ${type} for ${pageUrl}`)
 
         return responseKey
       } catch (error) {
@@ -1033,9 +1009,8 @@ ${responseStructure}`
         }
 
         await GM.setValue(logKey, JSON.stringify(logEntry))
-        console.log(
-          `💰 Token usage logged: ${tokens.total} tokens, $${cost.toFixed(6)}`
-        )
+        //console.log(
+        //  `💰 Token usage logged: ${tokens.total} tokens, $${cost.toFixed(6)}`)
 
         return logKey
       } catch (error) {
@@ -1202,7 +1177,7 @@ ${responseStructure}`
           ? cacheKey
           : `ai_cache_${cacheKey}`
 
-        console.log("🔍 ViewCacheContent: Looking for cache key:", fullCacheKey)
+        //console.log("🔍 ViewCacheContent: Looking for cache key:", fullCacheKey)
 
         const cached = await GM.getValue(fullCacheKey, null)
         if (!cached) {
@@ -1343,7 +1318,7 @@ ${responseStructure}`
 
         const prompt = `You are a radiology education expert. Answer the following question based on the provided content.
 
-CONTENT: "${content.substring(0, 40000)}"
+CONTENT: "${content.substring(0)}"
 
 QUESTION: "${question}"
 
@@ -1359,30 +1334,30 @@ ANSWER:`
         const response = await this.callMistralAPI(prompt, null, {
           type: "qa",
           pageUrl,
-          question: question.substring(0, 100), // Truncate for logging
+          question: question.substring(0), // Truncate for logging
         })
 
         if (response && response.content) {
           const rawAnswer = response.content.trim()
           const formattedAnswer = this.formatMarkdownToHTML(rawAnswer)
 
-          // � UNIFIED STORAGE ONLY: Store as AI response
+          // UNIFIED STORAGE ONLY: Store as AI response
           const responseKey = await this.storeAIResponse(
             pageUrl,
             "qa",
             {
               question,
-              content: content.substring(0, 1000),
+              content: content.substring(0),
               languageInstruction,
             },
             { raw: rawAnswer, parsed: formattedAnswer },
             { model: this.model, questionLength: question.length }
           )
 
-          console.log("✅ Q&A generated and stored in unified system", {
-            pageUrl,
-            responseKey: responseKey?.substring(0, 50) + "...",
-          })
+          //console.log("✅ Q&A generated and stored in unified system", {
+          //  pageUrl,
+          //  responseKey: responseKey?.substring(0, 50) + "...",
+          //})
 
           return formattedAnswer
         } else {
@@ -1390,7 +1365,8 @@ ANSWER:`
         }
       } catch (error) {
         console.error("❌ Error generating AI answer:", error)
-        return "❌ Error generating answer. Please try again or check your API key."
+        // Re-throw the error with API details intact so UI can handle it properly
+        throw error
       }
     }
 
@@ -1411,15 +1387,15 @@ ANSWER:`
         stats.apiCallsTotal = (stats.apiCallsTotal || 0) + 1
         stats.lastApiCall = Date.now()
         await dataManager.saveData(statsKey, stats)
-        console.log(
-          `API call tracked (GM storage). Total: ${stats.apiCallsTotal}`
-        )
+        //console.log(
+        //  `API call tracked (GM storage). Total: ${stats.apiCallsTotal}`
+        //)
       } catch (error) {
         console.error("Error tracking API call (GM storage):", error)
       }
     }
 
-    // GDPR: Sanitize content to remove any potential personal information
+    // Sanitize content to remove any potential personal information
     sanitizeContent(content) {
       // Remove email addresses, phone numbers, and other PII patterns
       return content
@@ -1432,7 +1408,7 @@ ANSWER:`
         .replace(/\b[A-Z][a-z]+ [A-Z][a-z]+\b/g, "[NAME]") // Simple name pattern
     }
 
-    // GDPR: Validate quiz data contains no personal information
+    // Validate quiz data contains no personal information
     validateQuizData(quizData) {
       const sensitivePatterns = [
         /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/, // emails
@@ -1453,10 +1429,138 @@ ANSWER:`
       return quizData
     }
 
+    // Helper function to format API errors with user-friendly messages
+    formatApiError(error, context = {}) {
+      // Check if it's an HTTP response error
+      if (error.responseText) {
+        const status = error.status
+
+        try {
+          const errorData = JSON.parse(error.responseText)
+
+          switch (status) {
+            case 401:
+              return {
+                type: "auth",
+                title: "🔑 API Key Issue",
+                message:
+                  "Your API key is invalid or has expired. Please check your key or generate a new one.",
+                suggestion:
+                  "Go to Settings → Manage Key to update your API key",
+                technical: errorData.message || "Authentication failed",
+              }
+            case 403:
+              return {
+                type: "permission",
+                title: "🚫 Access Denied",
+                message:
+                  "Your API key doesn't have permission to access this service.",
+                suggestion:
+                  "Check your Mistral AI account permissions and billing status",
+                technical: errorData.message || "Forbidden access",
+              }
+            case 429:
+              return {
+                type: "rate_limit",
+                title: "⏱️ Rate Limit Exceeded",
+                message:
+                  "Too many requests. Please wait a moment before trying again.",
+                suggestion:
+                  "Try again in a few minutes or upgrade your API plan",
+                technical: errorData.message || "Rate limit exceeded",
+              }
+            case 400:
+              return {
+                type: "bad_request",
+                title: "⚠️ Request Error",
+                message: "There was an issue with the request format.",
+                suggestion:
+                  "This is likely a temporary issue. Please try again.",
+                technical: errorData.message || "Bad request format",
+              }
+            case 500:
+            case 502:
+            case 503:
+              return {
+                type: "server_error",
+                title: "🔧 Server Issue",
+                message: "Mistral AI service is temporarily unavailable.",
+                suggestion: "Please try again in a few minutes",
+                technical: errorData.message || `Server error (${status})`,
+              }
+            default:
+              return {
+                type: "unknown_http",
+                title: "❌ Connection Error",
+                message: `Unexpected server response (${status}).`,
+                suggestion: "Check your internet connection and try again",
+                technical: errorData.message || `HTTP ${status} error`,
+              }
+          }
+        } catch (parseError) {
+          console.warn("Could not parse error response:", parseError)
+          return {
+            type: "parse_error",
+            title: "❌ Communication Error",
+            message: `Unable to communicate with Mistral AI (${status}).`,
+            suggestion: "Check your internet connection and API key",
+            technical: error.responseText || "Failed to parse error response",
+          }
+        }
+      }
+
+      // Network or other errors
+      if (error.message) {
+        if (error.message.includes("API key required")) {
+          return {
+            type: "no_key",
+            title: "🔑 API Key Required",
+            message:
+              "No API key configured. You need a Mistral AI API key to use AI features.",
+            suggestion:
+              'Click the "Setup API Key" button to configure your key',
+            technical: "API key not found in storage",
+          }
+        }
+
+        if (
+          error.message.includes("network") ||
+          error.message.includes("fetch")
+        ) {
+          return {
+            type: "network",
+            title: "🌐 Network Error",
+            message: "Cannot connect to Mistral AI servers.",
+            suggestion: "Check your internet connection and try again",
+            technical: error.message,
+          }
+        }
+      }
+
+      // Generic fallback
+      return {
+        type: "generic",
+        title: "❌ Unexpected Error",
+        message: "Something went wrong while processing your request.",
+        suggestion: "Please try again or check your API key in settings",
+        technical: error.message || "Unknown error occurred",
+      }
+    }
+
     // Unified API call method with tracking
     async callMistralAPI(prompt, model = null, context = {}) {
       if (!this.apiKey) {
-        throw new Error("API key required for Mistral AI calls")
+        const noKeyError = new Error("API key required for Mistral AI calls")
+        noKeyError.apiErrorDetails = {
+          type: "no_key",
+          title: "🔑 API Key Required",
+          message:
+            "No API key configured. You need a Mistral AI API key to use AI features.",
+          suggestion:
+            'Click "Setup API Key" or go to Settings → Manage Key to configure your key',
+          technical: "API key not found in storage",
+        }
+        throw noKeyError
       }
 
       try {
@@ -1487,59 +1591,74 @@ ANSWER:`
         const data = JSON.parse(response.responseText)
 
         // 🔍 DETAILED API RESPONSE LOGGING FOR ANALYSIS
-        console.log("🚀 === COMPLETE MISTRAL API RESPONSE ANALYSIS ===")
-        console.log("📊 Full Response Status:", response.status)
-        console.log("📊 Response Headers:", response.responseHeaders)
-        console.log(
-          "📊 Raw Response Text Length:",
-          response.responseText.length
-        )
-        console.log(
-          "📊 Raw Response Text (first 2000 chars):",
-          response.responseText.substring(0, 2000)
-        )
-        console.log(
-          "📊 Raw Response Text (last 1000 chars):",
-          response.responseText.substring(response.responseText.length - 1000)
-        )
+        //console.log("🚀 === COMPLETE MISTRAL API RESPONSE ANALYSIS ===")
+        //console.log("📊 Full Response Status:", response.status)
+        //console.log("📊 Response Headers:", response.responseHeaders)
+        //console.log(
+        //  "📊 Raw Response Text Length:",
+        //  response.responseText.length
+        //)
+        //console.log(
+        //  "📊 Raw Response Text (first 2000 chars):",
+        //  response.responseText.substring(0, 2000)
+        //)
+        //console.log(
+        //  "📊 Raw Response Text (last 1000 chars):",
+        //  response.responseText.substring(response.responseText.length - 1000)
+        //)
 
-        console.log("🔍 === PARSED JSON DATA STRUCTURE ===")
-        console.log("📊 Complete Data Object:", data)
-        console.log("📊 Data Keys:", Object.keys(data))
+        //console.log("🔍 === PARSED JSON DATA STRUCTURE ===")
+        //console.log("📊 Complete Data Object:", data)
+        //console.log("📊 Data Keys:", Object.keys(data))
 
         if (data.choices && data.choices.length > 0) {
-          console.log("📊 Choices Array Length:", data.choices.length)
-          console.log("📊 First Choice Object:", data.choices[0])
-          console.log("📊 First Choice Keys:", Object.keys(data.choices[0]))
+          //console.log("📊 Choices Array Length:", data.choices.length)
+          //console.log("📊 First Choice Object:", data.choices[0])
+          //console.log("📊 First Choice Keys:", Object.keys(data.choices[0]))
 
           if (data.choices[0].message) {
-            console.log("📊 Message Object:", data.choices[0].message)
-            console.log(
-              "📊 Message Keys:",
-              Object.keys(data.choices[0].message)
-            )
+            //console.log("📊 Message Object:", data.choices[0].message)
+            //console.log(
+            //  "📊 Message Keys:",
+            //  Object.keys(data.choices[0].message)
+            //)
             console.log(
               "📊 Message Content Length:",
               data.choices[0].message.content?.length
             )
-            console.log(
-              "📊 Message Content (first 1500 chars):",
-              data.choices[0].message.content?.substring(0, 1500)
-            )
-            console.log(
-              "📊 Message Content (last 800 chars):",
-              data.choices[0].message.content?.substring(
-                data.choices[0].message.content.length - 800
-              )
-            )
+            //console.log(
+            //  "📊 Message Content (first 1500 chars):",
+            //  data.choices[0].message.content?.substring(0, 1500)
+            // )
           }
         }
 
-        if (data.usage) {
-          console.log("📊 API Usage Stats:", data.usage)
-        }
+        //if (data.usage) {
+        //console.log("📊 API Usage Stats:", data.usage)
+        //}
 
-        console.log("🔍 === END API RESPONSE ANALYSIS ===")
+        //console.log("🔍 === END API RESPONSE ANALYSIS ===")
+
+        // Check for valid response structure
+        if (
+          !data.choices ||
+          !data.choices.length ||
+          !data.choices[0]?.message?.content
+        ) {
+          const invalidResponseError = new Error(
+            "Invalid or empty response from Mistral AI"
+          )
+          invalidResponseError.apiErrorDetails = {
+            type: "invalid_response",
+            title: "⚠️ Invalid Response",
+            message: "The AI service returned an unexpected response format.",
+            suggestion: "This might be a temporary issue. Please try again.",
+            technical: `Response structure: ${JSON.stringify(
+              Object.keys(data)
+            )}`,
+          }
+          throw invalidResponseError
+        }
 
         // 💰 DYNAMIC TOKEN COST CALCULATION
         if (data.usage) {
@@ -1567,8 +1686,13 @@ ANSWER:`
           content: data.choices[0].message.content,
         }
       } catch (error) {
-        console.error("🔒 GDPR: Mistral API call failed:", error)
-        throw error
+        // Create a more detailed error object for better handling
+        const formattedError = this.formatApiError(error, context)
+        const enhancedError = new Error(formattedError.message)
+        enhancedError.apiErrorDetails = formattedError
+        enhancedError.originalError = error
+
+        throw enhancedError
       }
     }
 
@@ -1628,226 +1752,6 @@ ANSWER:`
       }
 
       return emojiMap[fieldName] || "📌" // Default emoji if not found
-    }
-
-    // 🔍 CONSOLE-ACCESSIBLE DATA ANALYSIS TOOL
-    async createConsoleDataAnalyzer() {
-      const analyzer = {
-        // Analyze all token logs
-        async analyzeTokenLogs() {
-          console.log("🔍 === TOKEN LOGS ANALYSIS ===")
-          try {
-            const allKeys = await GM.listValues()
-            const tokenKeys = allKeys.filter(key =>
-              key.startsWith("token_log_")
-            )
-
-            if (tokenKeys.length === 0) {
-              console.log("📊 No token logs found")
-              return
-            }
-
-            console.log(`📊 Found ${tokenKeys.length} token log entries`)
-
-            let totalTokens = 0
-            let totalCost = 0
-            const logsByType = {}
-            const logsByModel = {}
-
-            for (const key of tokenKeys.slice(0, 20)) {
-              // Limit to recent 20 for performance
-              try {
-                const data = await GM.getValue(key)
-                if (data) {
-                  const log = JSON.parse(data)
-                  totalTokens += log.tokens.total || 0
-                  totalCost += log.cost || 0
-
-                  logsByType[log.type] = (logsByType[log.type] || 0) + 1
-                  logsByModel[log.model] = (logsByModel[log.model] || 0) + 1
-
-                  console.log(
-                    `📋 Log: ${new Date(log.timestamp).toLocaleString()} | ${
-                      log.type
-                    } | ${log.tokens.total} tokens | $${log.cost.toFixed(6)}`
-                  )
-                }
-              } catch (e) {
-                console.warn(`⚠️ Error parsing log ${key}:`, e)
-              }
-            }
-
-            console.log(`💰 Total Cost: $${totalCost.toFixed(6)}`)
-            console.log(`🔢 Total Tokens: ${totalTokens.toLocaleString()}`)
-            console.log(`📊 Usage by Type:`, logsByType)
-            console.log(`🤖 Usage by Model:`, logsByModel)
-          } catch (error) {
-            console.error("❌ Error analyzing token logs:", error)
-          }
-        },
-
-        // Analyze unified AI responses
-        async analyzeUnifiedResponses() {
-          console.log("🔍 === UNIFIED AI RESPONSES ANALYSIS ===")
-          try {
-            const allKeys = await GM.listValues()
-            const responseKeys = allKeys.filter(key =>
-              key.startsWith("ai_response_")
-            )
-
-            if (responseKeys.length === 0) {
-              console.log("📊 No unified AI responses found")
-              return
-            }
-
-            console.log(`📊 Found ${responseKeys.length} unified AI responses`)
-
-            let totalSize = 0
-            const responsesByType = {}
-
-            for (const key of responseKeys.slice(0, 20)) {
-              // Show more since this is the main system now
-              try {
-                const data = await GM.getValue(key)
-                if (data) {
-                  const response = JSON.parse(data)
-                  const size = JSON.stringify(response).length
-                  totalSize += size
-
-                  responsesByType[response.type] =
-                    (responsesByType[response.type] || 0) + 1
-
-                  const age = Math.floor(
-                    (Date.now() - response.timestamp) / (1000 * 60 * 60)
-                  ) // hours
-                  console.log(
-                    `📋 Response: ${response.type} | ${(size / 1024).toFixed(
-                      1
-                    )}KB | ${age}h old | ${response.pageTitle || "Unknown"}`
-                  )
-                }
-              } catch (e) {
-                console.warn(`⚠️ Error parsing response ${key}:`, e)
-              }
-            }
-
-            console.log(
-              `💾 Total Responses Size: ${(totalSize / 1024).toFixed(1)}KB`
-            )
-            console.log(`📊 Responses by Type:`, responsesByType)
-          } catch (error) {
-            console.error("❌ Error analyzing unified responses:", error)
-          }
-        },
-
-        // Full storage overview
-        async fullStorageAnalysis() {
-          console.log("🔍 === UNIFIED STORAGE SYSTEM ANALYSIS ===")
-          try {
-            const allKeys = await GM.listValues()
-            console.log(`📊 Total Storage Keys: ${allKeys.length}`)
-
-            const categories = {}
-            let totalEstimatedSize = 0
-
-            // Categorize all keys (unified system only)
-            for (const key of allKeys) {
-              let category = "Other"
-              if (key.startsWith("token_log_")) category = "Token Logs"
-              else if (key.startsWith("ai_response_")) category = "AI Responses"
-              else if (key.startsWith("ra_tutor_gdpr_"))
-                category = "User Settings"
-              else if (key.includes("api_stats_")) category = "API Stats"
-              // Note: No more ai_cache_ or qa_history_ - pure unified system!
-
-              categories[category] = (categories[category] || 0) + 1
-
-              // Estimate size for first few keys in each category
-              if (categories[category] <= 5) {
-                try {
-                  const data = await GM.getValue(key)
-                  if (data) {
-                    const size =
-                      typeof data === "string"
-                        ? data.length
-                        : JSON.stringify(data).length
-                    totalEstimatedSize += size
-                  }
-                } catch (e) {
-                  console.warn(`⚠️ Error reading ${key}:`, e)
-                }
-              }
-            }
-
-            console.log("📊 Storage Categories (Unified System):", categories)
-            console.log(
-              `💾 Estimated Size (sample): ${(
-                totalEstimatedSize / 1024
-              ).toFixed(1)}KB`
-            )
-
-            // Run individual analyses (only token logs and unified responses now)
-            await this.analyzeTokenLogs()
-            await this.analyzeUnifiedResponses()
-          } catch (error) {
-            console.error("❌ Error in unified storage analysis:", error)
-          }
-        },
-
-        // Cleanup suggestions
-        async cleanupSuggestions() {
-          console.log("🔍 === CLEANUP SUGGESTIONS ===")
-          try {
-            const allKeys = await GM.listValues()
-            const now = Date.now()
-            const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000
-
-            let oldCacheCount = 0
-            let oldLogsCount = 0
-
-            for (const key of allKeys) {
-              try {
-                if (key.startsWith("ai_cache_")) {
-                  const data = await GM.getValue(key)
-                  if (data) {
-                    const cache = JSON.parse(data)
-                    if (cache.timestamp && cache.timestamp < oneWeekAgo) {
-                      oldCacheCount++
-                    }
-                  }
-                }
-
-                if (key.startsWith("token_log_")) {
-                  const timestamp = parseInt(key.split("_")[2])
-                  if (timestamp < oneWeekAgo) {
-                    oldLogsCount++
-                  }
-                }
-              } catch (e) {
-                console.warn(`⚠️ Error checking ${key}:`, e)
-              }
-            }
-
-            console.log(`📊 Old cache entries (>1 week): ${oldCacheCount}`)
-            console.log(`📊 Old log entries (>1 week): ${oldLogsCount}`)
-
-            if (oldCacheCount > 0 || oldLogsCount > 0) {
-              console.log(
-                "💡 Cleanup suggestion: Consider clearing old entries to free space"
-              )
-              console.log(
-                "🔧 Use: window.raTutor.dataManager.clearAllUserData() to reset all data"
-              )
-            } else {
-              console.log("✅ Storage is clean, no cleanup needed")
-            }
-          } catch (error) {
-            console.error("❌ Error generating cleanup suggestions:", error)
-          }
-        },
-      }
-
-      return analyzer
     }
 
     // Get Q&A history for a specific page from unified storage
@@ -2008,7 +1912,6 @@ ANSWER:`
 
       // Initialize summary content after a brief delay to ensure DOM is ready
       setTimeout(async () => {
-        console.log("🔄 Initial updateSummaryTab() call from init()")
         await this.updateSummaryTab()
       }, 100)
     }
@@ -2132,7 +2035,6 @@ ANSWER:`
         if (specificNavbar) {
           // Move it down by our scroll bar height
           specificNavbar.style.top = "25px"
-          console.log("📍 Adjusted specific navbar with top-0 class")
         }
 
         // Fallback more general selector in case the above doesn't work
@@ -2406,16 +2308,12 @@ ANSWER:`
         } else if (e.target.dataset.action === "test-api-key") {
           this.testApiKey()
         } else if (e.target.dataset.action === "view-pricing") {
-          console.log("💰 View pricing clicked")
           this.showPricingOverview()
         } else if (e.target.dataset.action === "update-pricing") {
-          console.log("✏️ Update pricing clicked")
           this.showPricingEditor()
         } else if (e.target.dataset.action === "view-data-overview") {
-          console.log("� View data overview clicked")
           this.showDataOverview()
         } else if (e.target.dataset.action === "export-data") {
-          console.log("📤 Export data clicked")
           this.exportAllData()
         } else if (e.target.dataset.action === "purge-data-keep-key") {
           console.log("🗑️ Purge data (keep key) clicked")
@@ -2447,7 +2345,6 @@ ANSWER:`
     }
 
     async updateSummaryTab() {
-      console.log("📋 updateSummaryTab() called")
       const content = document.getElementById("summary-content")
       if (!content) {
         console.log("📋 No summary-content element found")
@@ -2456,7 +2353,7 @@ ANSWER:`
 
       // Check if AI features are available
       const hasKey = this.aiTutor.hasApiKey()
-      console.log("📋 API key available:", hasKey)
+      //console.log("📋 API key available:", hasKey)
 
       if (!hasKey) {
         console.log("📋 No API key - showing setup UI")
@@ -2478,15 +2375,12 @@ ANSWER:`
           </div>
         `
 
-        // Add event listener for setup button
-        const setupBtn = content.querySelector('[data-action="setup-api"]')
-        if (setupBtn) {
-          setupBtn.addEventListener("click", () => this.showApiKeySetup())
-        }
+        // Note: Event listener for setup-api button is handled by event delegation above
+        // No need for direct event listener to avoid double-triggering
         return
       }
 
-      console.log("📋 API key available - showing summary interface")
+      //console.log("📋 API key available - showing summary interface")
       content.innerHTML = "🔄 Analyzing page content..."
 
       try {
@@ -2569,11 +2463,17 @@ ANSWER:`
             )
             this.displaySummary(summary, summaryContent)
           } catch (error) {
-            summaryContent.innerHTML = `<div style="color: #dc3545;">Error generating summary: ${error.message}</div>`
+            const errorMessage = this.createErrorMessage(error, {
+              type: "summary",
+            })
+            summaryContent.innerHTML = errorMessage.html
+            errorMessage.setupEventListeners()
           }
         }
       } catch (error) {
-        content.innerHTML = "Error generating summary"
+        const errorMessage = this.createErrorMessage(error, { type: "summary" })
+        content.innerHTML = errorMessage.html
+        errorMessage.setupEventListeners()
         console.error("Summary error:", error)
       }
     }
@@ -2615,11 +2515,11 @@ ANSWER:`
 
       // 🎯 PURE DYNAMIC CONTENT DISPLAY - Use AI's structure exactly as returned
       if (summary._dynamicSections && summary._dynamicSections.length > 0) {
-        console.log(
-          "📋 Displaying",
-          summary._dynamicSections.length,
-          "dynamic sections"
-        )
+        //console.log(
+        //  "📋 Displaying",
+        //  summary._dynamicSections.length,
+        //  "dynamic sections"
+        //)
 
         summary._dynamicSections.forEach(section => {
           html += `
@@ -2636,7 +2536,7 @@ ANSWER:`
       } else {
         // Fallback for legacy summaries or parsing failures
         console.log(
-          "� Using fallback display for summary without dynamic sections"
+          "Using fallback display for summary without dynamic sections"
         )
         html += `
           <div style="margin-bottom: 12px; padding: 12px; background: #1a3a6b; border-radius: 6px; text-align: center; color: #95a5a6;">
@@ -2737,7 +2637,11 @@ ANSWER:`
 
             this.displaySummary(summary, container)
           } catch (error) {
-            container.innerHTML = `<div style="color: #dc3545;">Error loading summary: ${error.message}</div>`
+            const errorMessage = this.createErrorMessage(error, {
+              type: "summary",
+            })
+            container.innerHTML = errorMessage.html
+            errorMessage.setupEventListeners()
             console.error("Summary switching error:", error)
           }
         })
@@ -2782,7 +2686,11 @@ ANSWER:`
 
             this.displaySummary(summary, container)
           } catch (error) {
-            container.innerHTML = `<div style="color: #dc3545;">Error regenerating summary: ${error.message}</div>`
+            const errorMessage = this.createErrorMessage(error, {
+              type: "summary",
+            })
+            container.innerHTML = errorMessage.html
+            errorMessage.setupEventListeners()
             console.error("Summary regeneration error:", error)
           }
         })
@@ -2809,50 +2717,50 @@ ANSWER:`
             const pageContent = this.aiTutor.extractPageContent()
             const languageInstruction = await this.getLanguageInstruction()
 
-            // Debug logging to verify language instruction is applied
-            if (languageInstruction) {
-              console.log(
-                `🌐 Language instruction for Q&A: ${languageInstruction.substring(
-                  0,
-                  50
-                )}...`
-              )
-              console.log(
-                `🔍 Original question: ${question.substring(0, 100)}...`
-              )
-            }
-
             const answer = await this.aiTutor.answerQuestion(
               question,
               pageContent,
               languageInstruction
             )
-            answerContent.innerHTML = `<strong>💡 Answer:</strong><br>${answer}`
-            questionInput.value = "" // Clear input after successful answer
 
-            // Refresh history button to show new entry exists
-            if (showHistoryButton) {
-              showHistoryButton.style.background = "#ffc107"
-              showHistoryButton.textContent = "📜 New History!"
+            // Check if the answer is an error message (contains error styling)
+            if (answer.includes('style="padding: 15px; background: #2c1810')) {
+              // It's a formatted error message
+              answerContent.innerHTML = answer
+            } else {
+              // It's a regular answer
+              answerContent.innerHTML = `<strong>💡 Answer:</strong><br>${answer}`
+              questionInput.value = "" // Clear input after successful answer
 
-              // If history content is currently visible and showing "no questions" message, refresh it
-              if (historyContent.style.display === "block") {
-                const pageUrl = window.location.pathname
-                const updatedHistory = await this.aiTutor.getQAHistory(pageUrl)
-                if (updatedHistory.length > 0) {
-                  // Auto-refresh the history display to show the new Q&A
-                  showHistoryButton.click() // This will hide current content
-                  setTimeout(() => showHistoryButton.click(), 100) // Then show updated content
+              // Refresh history button to show new entry exists
+              if (showHistoryButton) {
+                showHistoryButton.style.background = "#ffc107"
+                showHistoryButton.textContent = "📜 New History!"
+
+                // If history content is currently visible and showing "no questions" message, refresh it
+                if (historyContent.style.display === "block") {
+                  const pageUrl = window.location.pathname
+                  const updatedHistory = await this.aiTutor.getQAHistory(
+                    pageUrl
+                  )
+                  if (updatedHistory.length > 0) {
+                    // Auto-refresh the history display to show the new Q&A
+                    showHistoryButton.click() // This will hide current content
+                    setTimeout(() => showHistoryButton.click(), 100) // Then show updated content
+                  }
                 }
-              }
 
-              setTimeout(() => {
-                showHistoryButton.style.background = "#17a2b8"
-                showHistoryButton.textContent = "📜 View History"
-              }, 3000)
+                setTimeout(() => {
+                  showHistoryButton.style.background = "#17a2b8"
+                  showHistoryButton.textContent = "📜 View History"
+                }, 3000)
+              }
             }
           } catch (error) {
-            answerContent.innerHTML = `<div style="color: #dc3545;">Error: ${error.message}</div>`
+            // Format error using the UI createErrorMessage method for consistency
+            const errorMessage = this.createErrorMessage(error, { type: "qa" })
+            answerContent.innerHTML = errorMessage.html
+            errorMessage.setupEventListeners()
           } finally {
             askButton.textContent = "🤔 Get Answer"
             askButton.disabled = false
@@ -3057,7 +2965,9 @@ ANSWER:`
                     </div>
                 `
       } catch (error) {
-        content.innerHTML = "Error generating quiz"
+        const errorMessage = this.createErrorMessage(error, { type: "quiz" })
+        content.innerHTML = errorMessage.html
+        errorMessage.setupEventListeners()
         console.error("Quiz error:", error)
       }
     }
@@ -3125,6 +3035,113 @@ ANSWER:`
         panel.style.transform = "translateX(0)"
         if (toggleButton) toggleButton.style.display = "none"
         this.switchTab(this.currentTab) // Refresh current tab
+      }
+    }
+
+    // Helper function to create nice error UI messages
+    createErrorMessage(error, context = {}) {
+      const details = error.apiErrorDetails || {
+        type: "generic",
+        title: "❌ Error",
+        message: error.message || "Something went wrong",
+        suggestion: "Please try again",
+        technical: "Unknown error",
+      }
+
+      const errorId = `error-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`
+
+      const contextActions = {
+        summary: `
+          <button class="error-btn-api-key" data-error-id="${errorId}" style="padding: 8px 12px; background: #7198f8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 8px; font-size: 12px;">
+            🔑 Manage API Key
+          </button>
+          <button class="error-btn-retry" data-error-id="${errorId}" style="padding: 8px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+            🔄 Try Again
+          </button>
+        `,
+        qa: `
+          <button class="error-btn-api-key" data-error-id="${errorId}" style="padding: 6px 10px; background: #7198f8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 6px; font-size: 11px;">
+            🔑 Check API Key
+          </button>
+        `,
+        quiz: `
+          <button class="error-btn-api-key" data-error-id="${errorId}" style="padding: 6px 10px; background: #7198f8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 6px; font-size: 11px;">
+            🔑 Check API Key
+          </button>
+          <button class="error-btn-retry-quiz" data-error-id="${errorId}" style="padding: 6px 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+            🔄 Try Again
+          </button>
+        `,
+      }
+
+      const html = `
+        <div id="${errorId}" style="padding: 15px; background: #2c1810; border: 1px solid #8b4513; border-radius: 8px; margin: 10px 0;">
+          <div style="color: #ff6b6b; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center;">
+            ${details.title}
+          </div>
+          <div style="color: #e8eaed; margin-bottom: 8px; line-height: 1.4;">
+            ${details.message}
+          </div>
+          <div style="color: #ffc107; font-size: 12px; margin-bottom: 12px; line-height: 1.3;">
+            <strong>💡 Suggestion:</strong> ${details.suggestion}
+          </div>
+          ${contextActions[context.type] || ""}
+          <details style="margin-top: 8px;">
+            <summary style="color: #7f8c8d; font-size: 10px; cursor: pointer;">🔍 Technical Details</summary>
+            <div style="color: #7f8c8d; font-size: 10px; margin-top: 4px; padding: 8px; background: #1a1a1a; border-radius: 4px;">
+              ${details.technical}
+            </div>
+          </details>
+        </div>
+      `
+
+      // Return an object with HTML and setup function
+      return {
+        html,
+        setupEventListeners: () => {
+          // Add event listeners after DOM insertion
+          setTimeout(() => {
+            const errorContainer = document.getElementById(errorId)
+            if (!errorContainer) return
+
+            // API Key button
+            const apiKeyBtns =
+              errorContainer.querySelectorAll(".error-btn-api-key")
+            apiKeyBtns.forEach(btn => {
+              btn.addEventListener("click", e => {
+                e.preventDefault()
+                this.showApiKeySetup()
+              })
+            })
+
+            // Retry button (for summary context)
+            const retryBtns =
+              errorContainer.querySelectorAll(".error-btn-retry")
+            retryBtns.forEach(btn => {
+              btn.addEventListener("click", e => {
+                e.preventDefault()
+                if (context.type === "summary") {
+                  this.updateSummaryTab()
+                }
+              })
+            })
+
+            // Quiz retry button
+            const quizRetryBtns = errorContainer.querySelectorAll(
+              ".error-btn-retry-quiz"
+            )
+            quizRetryBtns.forEach(btn => {
+              btn.addEventListener("click", e => {
+                e.preventDefault()
+                if (context.type === "quiz") {
+                  this.generateQuiz()
+                }
+              })
+            })
+          }, 10)
+        },
       }
     }
 
@@ -3214,19 +3231,11 @@ ANSWER:`
               // Close modal first
               overlay.remove()
 
-              // Force refresh the UI state after a small delay to ensure everything is updated
-              setTimeout(() => {
-                console.log("🔑 Refreshing UI after API key save...")
-                console.log(
-                  "🔑 hasApiKey() now returns:",
-                  this.aiTutor.hasApiKey()
-                )
-                // Refresh current tab to show new features
-                this.switchTab(this.currentTab)
-              }, 100)
-
               console.log("🔑 API key saved securely in local storage")
               alert("✅ API key saved successfully!")
+
+              // Reload the page to ensure all UI elements are properly initialized with the new API key
+              window.location.reload()
             } catch (error) {
               console.error("🔑 Error saving API key:", error)
               alert("❌ Error saving API key. Please try again.")
@@ -3344,7 +3353,7 @@ ANSWER:`
 
     async getLanguageInstruction() {
       const language = await this.getLanguagePreference()
-      console.log(`🌐 Current language preference: ${language}`)
+      //console.log(`🌐 Current language preference: ${language}`)
       const instructions = {
         english: "", // No additional instruction needed for English
         slovenian:
@@ -3355,11 +3364,7 @@ ANSWER:`
           "\n\nIMPORTANT: You must respond entirely in Serbian language (srpski). Do not use English except for medical terms that don't have direct Serbian translations.",
       }
       const instruction = instructions[language] || ""
-      console.log(
-        `🌐 Generated language instruction: "${instruction.substring(0, 50)}${
-          instruction.length > 50 ? "..." : ""
-        }"`
-      )
+
       return instruction
     }
 
@@ -4006,18 +4011,18 @@ ANSWER:`
           options
         )}`
 
-        console.log("🔍 Looking for cached summary type:", {
-          length,
-          focus,
-          expectedCacheKey: expectedCacheKey.substring(0, 60) + "...",
-        })
+        //console.log("🔍 Looking for cached summary type:", {
+        //  length,
+        //  focus,
+        //  expectedCacheKey: expectedCacheKey.substring(0, 60) + "...",
+        //})
 
         // Check if this exact type exists
         const cached = await GM.getValue(expectedCacheKey, null)
         if (cached) {
           const parsedCache = JSON.parse(cached)
           if (parsedCache.timestamp && parsedCache.content) {
-            console.log("✅ Found cached summary for this type")
+            //console.log("✅ Found cached summary for this type")
             return {
               summary: parsedCache.content,
               timestamp: parsedCache.timestamp,
@@ -4071,29 +4076,51 @@ ANSWER:`
         return
       }
 
+      const testButton = document.querySelector('[data-action="test-api-key"]')
+      const originalText = testButton ? testButton.textContent : null
+
+      if (testButton) {
+        testButton.textContent = "🔄 Testing..."
+        testButton.disabled = true
+      }
+
       try {
         const testResponse = await this.aiTutor.callMistralAPI(
           'Test message - please respond with "OK"',
-          "mistral-small-latest"
+          "mistral-small-latest",
+          { type: "api_test" }
         )
+
         if (testResponse && testResponse.content) {
           alert("✅ API key is working correctly!")
         } else {
           alert("⚠️ API key test returned unexpected response.")
         }
       } catch (error) {
-        alert(`❌ API key test failed: ${error.message}`)
+        if (error.apiErrorDetails) {
+          const details = error.apiErrorDetails
+          alert(
+            `❌ API Key Test Failed\n\n${details.title}\n${details.message}\n\nSuggestion: ${details.suggestion}`
+          )
+        } else {
+          alert(`❌ API key test failed: ${error.message}`)
+        }
+      } finally {
+        if (testButton) {
+          testButton.textContent = originalText || "Test Key"
+          testButton.disabled = false
+        }
       }
     }
 
     async showAllDataViewer() {
-      console.log("🔍 showAllDataViewer called")
+      //console.log("🔍 showAllDataViewer called")
       try {
-        console.log("🔍 Getting ALL GM keys (including AI cache)...")
+        //console.log("🔍 Getting ALL GM keys (including AI cache)...")
 
         // Get ALL GM keys, not just prefixed ones
         const allGMKeys = await GM.listValues()
-        console.log("🔍 All GM keys found:", allGMKeys)
+        //console.log("🔍 All GM keys found:", allGMKeys)
 
         // Separate prefixed app data from AI cache
         const appDataKeys = allGMKeys.filter(key =>
@@ -4108,18 +4135,18 @@ ANSWER:`
             key !== "mistral_api_key"
         )
 
-        console.log("🔍 Categorized keys:", {
-          appData: appDataKeys.length,
-          aiCache: aiCacheKeys.length,
-          apiKey: apiKeyKeys.length,
-          other: otherKeys.length,
-        })
+        //console.log("🔍 Categorized keys:", {
+        //  appData: appDataKeys.length,
+        //  aiCache: aiCacheKeys.length,
+        //  apiKey: apiKeyKeys.length,
+        //  other: otherKeys.length,
+        //})
 
         // Count Q&A history entries
         const qaHistoryKeys = appDataKeys.filter(key =>
           key.includes("qa_history_")
         )
-        console.log("🔍 Q&A History keys found:", qaHistoryKeys.length)
+        //console.log("🔍 Q&A History keys found:", qaHistoryKeys.length)
 
         if (allGMKeys.length === 0) {
           console.log("� No keys found at all")
@@ -4141,14 +4168,14 @@ ANSWER:`
         // Load app data
         for (const key of appDataKeys) {
           const cleanKey = key.replace("ra_tutor_gdpr_", "")
-          console.log("🔍 Loading app data for key:", cleanKey)
+          //console.log("🔍 Loading app data for key:", cleanKey)
           const data = await this.dataManager.loadData(cleanKey, {})
           dataPreview[`APP_DATA_${cleanKey}`] = data
         }
 
         // Load AI cache data
         for (const key of aiCacheKeys) {
-          console.log("🔍 Loading AI cache for key:", key)
+          //console.log("🔍 Loading AI cache for key:", key)
           try {
             const cached = await GM.getValue(key, null)
             if (cached) {
@@ -4193,7 +4220,7 @@ ANSWER:`
 
         // Load other keys
         for (const key of otherKeys) {
-          console.log("🔍 Loading other data for key:", key)
+          //console.log("🔍 Loading other data for key:", key)
           try {
             const data = await GM.getValue(key, null)
             dataPreview[`OTHER_${key}`] = data
@@ -4375,7 +4402,7 @@ ANSWER:`
         const exportData = {
           metadata: {
             exportDate: new Date().toISOString(),
-            scriptVersion: GM.info ? GM.info.script.version : "0.0.1",
+            scriptVersion: GM.info ? GM.info.script.version : "testing",
             totalResponses: responseKeys.length,
             totalTokenLogs: tokenLogKeys.length,
           },
@@ -4490,9 +4517,106 @@ ANSWER:`
             new Date(b.date + "T" + b.time) - new Date(a.date + "T" + a.time)
         )
 
-        // Create the export file
-        const dataBlob = new Blob([JSON.stringify(exportData, null, 2)], {
-          type: "application/json",
+        // Helper function to escape CSV values
+        const escapeCSV = value => {
+          if (value === null || value === undefined) return ""
+          const str = String(value)
+          // Escape quotes and wrap in quotes if contains comma, quote, or newline
+          if (str.includes('"') || str.includes(",") || str.includes("\n")) {
+            return `"${str.replace(/"/g, '""')}"`
+          }
+          return str
+        }
+
+        // Helper function to convert array to CSV
+        const arrayToCSV = (data, headers) => {
+          if (data.length === 0) return headers.join(",") + "\n"
+
+          const csvRows = [
+            headers.join(","), // Header row
+            ...data.map(row =>
+              headers.map(header => escapeCSV(row[header])).join(",")
+            ),
+          ]
+          return csvRows.join("\n")
+        }
+
+        // Create individual CSV sections
+        const sections = []
+
+        // Metadata section
+        sections.push("=== EXPORT METADATA ===")
+        sections.push(`Export Date,${exportData.metadata.exportDate}`)
+        sections.push(`Script Version,${exportData.metadata.scriptVersion}`)
+        sections.push(
+          `Total Q&A Responses,${exportData.metadata.totalResponses}`
+        )
+        sections.push(`Total Token Logs,${exportData.metadata.totalTokenLogs}`)
+        sections.push(
+          `API Key Configured,${exportData.settings.apiKeyConfigured}`
+        )
+        sections.push(`Language Setting,${exportData.settings.language}`)
+        sections.push("") // Empty line
+
+        // Q&A section
+        if (exportData.questions_and_answers.length > 0) {
+          sections.push("=== QUESTIONS & ANSWERS ===")
+          const qaHeaders = [
+            "date",
+            "time",
+            "page_title",
+            "page_url",
+            "question",
+            "answer",
+            "model_used",
+            "question_length",
+            "language",
+          ]
+          sections.push(arrayToCSV(exportData.questions_and_answers, qaHeaders))
+          sections.push("") // Empty line
+        }
+
+        // Summaries section
+        if (exportData.summaries.length > 0) {
+          sections.push("=== AI SUMMARIES ===")
+          const summaryHeaders = [
+            "date",
+            "time",
+            "page_title",
+            "page_url",
+            "summary_focus",
+            "summary_length",
+            "content_preview",
+            "model_used",
+            "language",
+          ]
+          sections.push(arrayToCSV(exportData.summaries, summaryHeaders))
+          sections.push("") // Empty line
+        }
+
+        // Token usage section
+        if (exportData.token_usage.length > 0) {
+          sections.push("=== TOKEN USAGE LOGS ===")
+          const tokenHeaders = [
+            "date",
+            "time",
+            "type",
+            "model",
+            "page_url",
+            "tokens_prompt",
+            "tokens_completion",
+            "tokens_total",
+            "cost_usd",
+          ]
+          sections.push(arrayToCSV(exportData.token_usage, tokenHeaders))
+        }
+
+        // Join all sections
+        const csvContent = sections.join("\n")
+
+        // Create the export file as CSV
+        const dataBlob = new Blob([csvContent], {
+          type: "text/csv;charset=utf-8;",
         })
         const url = URL.createObjectURL(dataBlob)
 
@@ -4500,14 +4624,14 @@ ANSWER:`
         link.href = url
         link.download = `radiology-tutor-export-${
           new Date().toISOString().split("T")[0]
-        }.json`
+        }.csv`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
 
         alert(
-          `✅ Data exported successfully!\n\n📊 Export Summary:\n• ${exportData.questions_and_answers.length} Q&A entries\n• ${exportData.summaries.length} summaries\n• ${exportData.token_usage.length} API usage logs\n\n💡 Tip: Open the JSON file in a text editor or import individual arrays into spreadsheet applications for analysis.`
+          `✅ Data exported successfully as CSV!\n\n📊 Export Summary:\n• ${exportData.questions_and_answers.length} Q&A entries\n• ${exportData.summaries.length} summaries\n• ${exportData.token_usage.length} API usage logs\n\n💡 Tip: Open the CSV file in Excel, Google Sheets, or any spreadsheet application. Data is organized in separate sections for easy analysis.`
         )
       } catch (error) {
         console.error("📤 Error in exportAllData:", error)
@@ -4638,87 +4762,23 @@ ANSWER:`
     // Helper method to get the last summary for a page
     async getLastSummary(pageUrl) {
       try {
-        const allGMKeys = await GM.listValues()
-        const aiCacheKeys = allGMKeys.filter(key =>
-          key.startsWith("ai_cache_summary_")
+        // Use the aiTutor's unified storage method instead of old cache system
+        const responses = await this.aiTutor.getPageAIResponses(
+          pageUrl,
+          "summary"
         )
 
-        // Normalize the input pageUrl to just the path for comparison
-        const normalizedPageUrl = this.normalizeUrlForComparison(pageUrl)
-
-        console.log("🔍 getLastSummary - pageUrl:", pageUrl)
-        console.log("🔍 getLastSummary - normalizedPageUrl:", normalizedPageUrl)
-        console.log("🔍 getLastSummary - found cache keys:", aiCacheKeys.length)
-
-        const pageSummaries = []
-        for (const key of aiCacheKeys) {
-          try {
-            const cached = await GM.getValue(key, null)
-            if (cached) {
-              const parsedCache = JSON.parse(cached)
-              if (parsedCache.timestamp && parsedCache.content) {
-                // Extract page info from cache key - the pageUrl should be directly in the key
-                // Cache keys look like: ai_cache_summary_/musculoskeletal/arthritis/fractures-video-lesson_hash_options
-                const keyParts = key.replace("ai_cache_summary_", "").split("_")
-                let keyPageUrl = keyParts[0]
-
-                // If the page URL contains slashes, they might be encoded or split across multiple parts
-                // Let's try to reconstruct the full path
-                if (keyParts.length > 2) {
-                  // Find where the hash part starts (it's usually a long alphanumeric string)
-                  const hashIndex = keyParts.findIndex(
-                    part => part.length > 20 && /^[a-f0-9]+$/.test(part)
-                  )
-                  if (hashIndex > 0) {
-                    keyPageUrl = keyParts.slice(0, hashIndex).join("_")
-                  }
-                }
-
-                // Add back slashes if they were replaced with underscores
-                if (!keyPageUrl.startsWith("/")) {
-                  keyPageUrl = "/" + keyPageUrl.replace(/_/g, "/")
-                }
-
-                console.log("🔍 Comparing:", { keyPageUrl, normalizedPageUrl })
-
-                // Compare the normalized URLs (both should be paths now)
-                if (keyPageUrl === normalizedPageUrl) {
-                  pageSummaries.push({
-                    content: parsedCache.content,
-                    timestamp: parsedCache.timestamp,
-                    pageUrl: normalizedPageUrl,
-                    cacheKey: key,
-                  })
-                  console.log("✅ Found matching summary:", {
-                    timestamp: parsedCache.timestamp,
-                  })
-                }
-              }
-            }
-          } catch (error) {
-            console.warn("Error loading summary:", error)
+        if (responses.length > 0) {
+          const latest = responses[0] // Already sorted by timestamp, most recent first
+          return {
+            content: latest.response.parsed || latest.response.raw,
+            timestamp: latest.timestamp,
+            focus: latest.request.focus || "general",
+            pageUrl: pageUrl,
           }
         }
 
-        console.log(
-          "🔍 getLastSummary - total matching summaries:",
-          pageSummaries.length
-        )
-
-        // Sort by timestamp (newest first) and return the most recent
-        pageSummaries.sort((a, b) => b.timestamp - a.timestamp)
-        const lastSummary = pageSummaries.length > 0 ? pageSummaries[0] : null
-
-        if (lastSummary) {
-          console.log(
-            "📋 Returning last summary from:",
-            new Date(lastSummary.timestamp)
-          )
-        } else {
-          console.log("❌ No matching summaries found")
-        }
-
-        return lastSummary
+        return null
       } catch (error) {
         console.error("Error getting last summary:", error)
         return null
@@ -4736,12 +4796,12 @@ ANSWER:`
         // Normalize the input pageUrl to just the path for comparison
         const normalizedPageUrl = this.normalizeUrlForComparison(pageUrl)
 
-        console.log("🔍 getCachedSummaryByType:", {
-          pageUrl,
-          normalizedPageUrl,
-          length,
-          focus,
-        })
+        // console.log("🔍 getCachedSummaryByType:", {
+        //   pageUrl,
+        //   normalizedPageUrl,
+        //   length,
+        //   focus,
+        // })
 
         for (const key of aiCacheKeys) {
           try {
@@ -4771,20 +4831,12 @@ ANSWER:`
                   keyPageUrl = "/" + keyPageUrl.replace(/_/g, "/")
                 }
 
-                console.log("🔍 Checking cache entry:", {
-                  keyPageUrl,
-                  normalizedPageUrl,
-                  cacheOptions: parsedCache.options,
-                  targetOptions: { length, focus },
-                })
-
                 // Check if this matches the page and summary type (use normalized URLs)
                 if (
                   keyPageUrl === normalizedPageUrl &&
                   parsedCache.options.length === length &&
                   parsedCache.options.focus === focus
                 ) {
-                  console.log("✅ Found matching cached summary by type")
                   return {
                     summary: parsedCache.content,
                     timestamp: parsedCache.timestamp,
@@ -4812,58 +4864,20 @@ ANSWER:`
     // Helper method to get summary history for a page
     async getSummaryHistory(pageUrl) {
       try {
-        const allGMKeys = await GM.listValues()
-        const aiCacheKeys = allGMKeys.filter(key =>
-          key.startsWith("ai_cache_summary_")
+        // Use the aiTutor's unified storage method
+        const responses = await this.aiTutor.getPageAIResponses(
+          pageUrl,
+          "summary"
         )
 
-        // Normalize the input pageUrl to just the path for comparison
-        const normalizedPageUrl = this.normalizeUrlForComparison(pageUrl)
-
-        const pageSummaries = []
-        for (const key of aiCacheKeys) {
-          try {
-            const cached = await GM.getValue(key, null)
-            if (cached) {
-              const parsedCache = JSON.parse(cached)
-              if (parsedCache.timestamp && parsedCache.content) {
-                // Use the same URL extraction logic as getLastSummary
-                const keyParts = key.replace("ai_cache_summary_", "").split("_")
-                let keyPageUrl = keyParts[0]
-
-                if (keyParts.length > 2) {
-                  const hashIndex = keyParts.findIndex(
-                    part => part.length > 20 && /^[a-f0-9]+$/.test(part)
-                  )
-                  if (hashIndex > 0) {
-                    keyPageUrl = keyParts.slice(0, hashIndex).join("_")
-                  }
-                }
-
-                if (!keyPageUrl.startsWith("/")) {
-                  keyPageUrl = "/" + keyPageUrl.replace(/_/g, "/")
-                }
-
-                // Use normalized URL for comparison
-                if (keyPageUrl === normalizedPageUrl) {
-                  pageSummaries.push({
-                    content: parsedCache.content,
-                    timestamp: parsedCache.timestamp,
-                    pageUrl: normalizedPageUrl,
-                    options: parsedCache.options || {},
-                    cacheKey: key,
-                  })
-                }
-              }
-            }
-          } catch (error) {
-            console.warn("Error loading summary:", error)
-          }
-        }
-
-        // Sort by timestamp (newest first)
-        pageSummaries.sort((a, b) => b.timestamp - a.timestamp)
-        return pageSummaries
+        // Convert to expected format for display
+        return responses.map(response => ({
+          content: response.response.parsed || response.response.raw,
+          timestamp: response.timestamp,
+          pageUrl: pageUrl,
+          options: response.request.options || {},
+          cacheKey: `ai_response_${response.type}_${response.id}`, // For compatibility
+        }))
       } catch (error) {
         console.error("Error getting summary history:", error)
         return []
@@ -4962,7 +4976,7 @@ ANSWER:`
                 ${model} ${isCustom ? "(Custom)" : "(Default)"}
               </div>
               <div style="font-size: 11px; color: #b0bec5;">
-                Input: $${pricing.input}/1K tokens • Output: $${
+                Input: €${pricing.input}/1K tokens • Output: €${
             pricing.output
           }/1K tokens
               </div>
@@ -5221,9 +5235,9 @@ ANSWER:`
 
     async start() {
       try {
-        console.log("🧠 Starting Radiology Assistant Personal Tutor...")
+        //console.log("🧠 Starting Radiology Assistant Personal Tutor...")
         window.raTutor = this
-        console.log("🔒 GDPR: Initializing AI Tutor...")
+        //console.log("🔒 Initializing AI Tutor...")
         await this.aiTutor.initialize()
         console.log(
           "🔒 AI Tutor initialization complete, API key status:",

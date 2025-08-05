@@ -1,6 +1,4 @@
-# Ignore userscript files to prevent format tags
-userscript.js
-*.user.js
+
 
 # Ignore documentation files to prevent format tags
 README.md
