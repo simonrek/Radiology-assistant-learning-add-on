@@ -3,7 +3,7 @@
 
 A **GDPR-compliant** AI-powered personal tutor userscript that enhances your learning experience on [Radiology Assistant](https://radiologyassistant.nl/). Get AI-powered summaries, interactive Q&A, and intelligent cost tracking with the latest Mistral AI integration.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/simonrek/Radiology-assistant-learning-add-on)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/simonrek/Radiology-assistant-learning-add-on)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![GDPR Compliant](https://img.shields.io/badge/GDPR-compliant-green.svg)](.)
 [![Mistral AI](https://img.shields.io/badge/AI-Mistral%20Latest-orange.svg)](https://mistral.ai/)
@@ -12,14 +12,15 @@ A **GDPR-compliant** AI-powered personal tutor userscript that enhances your lea
 
 **[📥 Install Now](https://raw.githubusercontent.com/simonrek/Radiology-assistant-learning-add-on/main/userscript.js)** | **[📖 Quick Start Guide](QUICKSTART.md)** | **[📋 Full Installation](INSTALL.md)**
 
-## ✨ What's New in v0.1.0
+## ✨ What's New in v0.3.0
 
-### Major Features Added
-- **💰 Dynamic Pricing Management**: Real-time EUR pricing with current Mistral AI rates
-- **🧠 Enhanced AI System**: Intelligent caching reduces costs by 60-80%
-- **📊 Advanced Analytics**: Comprehensive token usage and cost tracking
-- **🎨 Improved UI**: Modern settings panel with pricing management
-- **⚡ Faster Performance**: Smart caching for instant response re-access
+### Major Updates & Improvements
+- **Complete Export System Redesign**: Four distinct export types (Q&A, Summaries, Combined, Metadata) with proper CSV formatting
+- **🎨 Enhanced Content Display**: Advanced markdown-to-HTML conversion with nested list support - no more raw markdown!
+- **New lenght setting in UI**: For the user to be able to change answer lenght like a breeze!
+- **Critical Bug Fixes**: Resolved "[object Object]" display issue and CSV export column separation problems
+- **🧹 Cleaner Code**: Clean console output with essential monitoring while preserving error handling
+- **⚡ Improved Caching**: Enhanced backward compatibility with legacy data formats and better cache retrieval
 
 ### 💸 Current Mistral AI Pricing (EUR)
 - **Small Model**: €0.1/M input, €0.3/M output tokens
@@ -47,7 +48,124 @@ A **GDPR-compliant** AI-powered personal tutor userscript that enhances your lea
 - **No Personal Data Collection**: Only processes anonymous educational content
 - **One-Click Data Deletion**: Delete everything anytime from settings
 
-## 📸 Screenshots
+## �️ AI Interaction Storage Architecture
+
+### Complete Data Storage Overview
+
+The userscript implements a comprehensive dual-storage system that tracks both **AI interactions** and **token usage** for complete transparency and data export capabilities.
+
+#### Storage System 1: AI Response Data (`ai_response_*`)
+
+Every AI interaction (summary or Q&A) is stored with complete metadata:
+
+**Storage Key Pattern**: `ai_response_{pageHash}_{type}_{requestHash}`
+
+**Complete Data Structure**:
+```javascript
+{
+  type: "summary" | "qa",
+  timestamp: "2024-01-01T12:00:00.000Z",
+  pageUrl: "https://radiologyassistant.nl/...",
+  pageTitle: "Chest X-ray - Normal anatomy",
+  request: {
+    // For summaries:
+    type: "Key Learning Points",
+    content: "Full page content...",
+    // For Q&A:
+    question: "What are the key features of..."
+  },
+  response: {
+    raw: "**Key Learning Points**\n\n1. Normal chest anatomy...",
+    parsed: "<strong>Key Learning Points</strong><br><br>1. Normal chest anatomy..."
+  },
+  metadata: {
+    model: "mistral-large-latest",
+    prompt_tokens: 1245,
+    completion_tokens: 387,
+    total_tokens: 1632,
+    cost_eur: 0.0089,
+    pageHash: "abc123def",
+    requestHash: "xyz789ghi"
+  }
+}
+```
+
+#### Storage System 2: Token Usage Logs (`token_log_*`)
+
+Every API call generates a parallel cost tracking entry:
+
+**Storage Key Pattern**: `token_log_{timestamp}`
+
+**Complete Data Structure**:
+```javascript
+{
+  timestamp: "2024-01-01T12:00:00.000Z",
+  model: "mistral-large-latest",
+  type: "summary" | "qa",
+  pageUrl: "https://radiologyassistant.nl/...",
+  tokens: {
+    prompt: 1245,
+    completion: 387,
+    total: 1632
+  },
+  cost: 0.0089,
+  requestId: "ai_response_abc123def_summary_xyz789ghi"
+}
+```
+
+### CSV Export Mapping
+
+The export system creates two separate CSV files with consistent column structures:
+
+#### Q&A Export Columns
+- **timestamp**: ISO date of interaction
+- **page_title**: Title of the radiology page
+- **page_url**: Full URL of the page
+- **question**: User's question text
+- **answer**: AI response (raw markdown)
+- **answer_length**: Character count of answer
+- **model_used**: Mistral model identifier
+- **cost_eur**: Cost in euros
+- **length_setting**: Characters setting used for summaries
+
+#### Summary Export Columns  
+- **timestamp**: ISO date of summary generation
+- **page_title**: Title of the radiology page
+- **page_url**: Full URL of the page
+- **summary_type**: Type (Key Learning Points, Clinical Overview, etc.)
+- **summary**: AI-generated summary (raw markdown)
+- **summary_length**: Character count of summary
+- **model_used**: Mistral model identifier
+- **cost_eur**: Cost in euros
+- **length_setting**: Characters setting used
+
+### Data Relationship Architecture
+
+```
+Page Visit → AI Request → Dual Storage
+     ↓            ↓           ↓
+Page Hash → Request Hash → ai_response_* + token_log_*
+     ↓            ↓           ↓
+Caching Key → Cost Tracking → CSV Export Data
+```
+
+### Storage Benefits
+
+1. **Complete Transparency**: Every interaction fully documented
+2. **Cost Control**: Real-time tracking of all AI usage costs
+3. **Data Portability**: Full CSV export of learning history
+4. **Intelligent Caching**: Duplicate requests served from storage (60-80% cost savings)
+5. **GDPR Compliance**: All data stored locally, exportable, and deletable
+
+### Storage Management
+
+- **Location**: Browser local storage via Greasemonkey API
+- **Persistence**: Survives browser restarts and updates
+- **Size**: Efficient JSON serialization with metadata compression
+- **Cleanup**: One-click deletion via settings panel
+- **Export**: Complete data export to CSV format anytime
+
+## �📸 Screenshots
 
 *UI screenshots will be added in the next update*
 

@@ -6,6 +6,7 @@ INSTALL.md
 CONTRIBUTING.md
 CHANGELOG.md
 QUICKSTART.md
+LICENSE.md
 
 # Ignore other files that shouldn't be formatted
 *.meta.js

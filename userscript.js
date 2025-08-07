@@ -3,8 +3,8 @@
 // ==UserScript==
 // @name         Radiology Assistant Personal Tutor
 // @namespace    https://github.com/simonrek/Radiology-assistant-learning-add-on
-// @version      0.1.1
-// @description  Latest update: 6.8.2025 ABOUT: GDPR-conscious AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress and maximize learning efficiency with Mistral AI.
+// @version      0.3.0
+// @description  Latest update: 7.8.2025 ABOUT: GDPR-conscious AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress and maximize learning efficiency with Mistral AI.
 // @author       Simon Rekanovic
 // @homepage     https://github.com/simonrek/Radiology-assistant-learning-add-on
 // @supportURL   https://github.com/simonrek/Radiology-assistant-learning-add-on/issues
@@ -43,14 +43,13 @@
     // ═══════════════════════════════════════
     // AI SETTINGS (Solution was built in Europe - therefore Mistral AI Only)
     // ═══════════════════════════════════════
-    MISTRAL_API_KEY: "", //API key later added by user (stored locally only)
     AI_MODEL: "mistral-medium-latest", // Mistral model to use
 
     // ═══════════════════════════════════════
     // PRICING CONFIGURATION (EUR per 1K tokens)
     // ═══════════════════════════════════════
     PRICING: {
-      // Mistral pricing as of August 2025 (per 1K tokens in EUR)
+      // Mistral pricing as of August 2025 (per 1K tokens in EUR) Can also be modified in UI
       "mistral-small-latest": {
         input: 0.0001, // €0.0001 per 1K input tokens (€0.1/M tokens)
         output: 0.0003, // €0.0003 per 1K output tokens (€0.3/M tokens)
@@ -79,7 +78,6 @@
     // DATA STORAGE SETTINGS (All Local - GDPR Compliant)
     // ═══════════════════════════════════════
     SAVE_PROGRESS_LOCALLY: true, // Save progress in browser storage
-    USE_GM_STORAGE_ONLY: true, // Use only GM storage for consistency
     DATA_RETENTION_DAYS: 365, // How long to keep local data
   }
 
@@ -106,10 +104,6 @@
 
     // Storage configuration
     STORAGE_PREFIX: "ra_tutor_gdpr_",
-
-    // Privacy settings
-    NO_PERSONAL_DATA: true,
-    GDPR_COMPLIANT: true,
   }
 
   // ========================================
@@ -177,6 +171,47 @@
         .tab-button.active {
             background: #7198f8;
             color: white;
+        }
+
+        /* Modern Button Styles for Summary Controls */
+        .modern-btn {
+            position: relative;
+            overflow: hidden;
+            text-align: center;
+            font-family: inherit;
+        }
+
+        .modern-btn:hover {
+            transform: translateY(-1px) !important;
+        }
+
+        .modern-btn:active {
+            transform: translateY(0) !important;
+        }
+
+        .modern-btn:disabled {
+            opacity: 0.6 !important;
+            cursor: not-allowed !important;
+            transform: none !important;
+        }
+
+        /* Ripple effect for modern buttons */
+        .modern-btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            transform: translate(-50%, -50%);
+            transition: width 0.3s, height 0.3s;
+        }
+
+        .modern-btn:active::before {
+            width: 100px;
+            height: 100px;
         }
 
         .progress-item {
@@ -457,12 +492,9 @@
       try {
         // console.log("🔑 AITutor.initialize() starting...")
         // Get API key from user configuration or local storage
-        this.apiKey =
-          USER_CONFIG.MISTRAL_API_KEY ||
-          (await GM.getValue("mistral_api_key", null))
+        this.apiKey = await GM.getValue("mistral_api_key", null)
         //console.log("🔑 API key sources checked:",
-        // {fromConfig: Boolean(USER_CONFIG.MISTRAL_API_KEY),
-        // fromStorage: Boolean(await GM.getValue("mistral_api_key", null)),
+        // {fromStorage: Boolean(await GM.getValue("mistral_api_key", null)),
         // finalKey: Boolean(this.apiKey)})
 
         // console.log(
@@ -519,12 +551,19 @@
       // Clean and limit content
       content = content.replace(/\s+/g, " ").trim()
       // console.log('🔒 Extracted page content:', content)
-      return content.substring(0, 50000) // Limit for API calls
+      return content.substring(0) // Limit for API calls
     }
 
     async generateSummary(content, options = {}, forceBypassCache = false) {
       // Create page-specific unified response key
       const pageUrl = window.location.pathname
+
+      // Resolve default values once at the start
+      const defaultLength = await this.getDefaultLengthPreference()
+      const focus = options.focus || "key_learning_points"
+      const length = options.length || defaultLength
+      const languageInstruction = options.languageInstruction || ""
+
       const requestHash = this.getContentHash(
         JSON.stringify({ content: content.substring(0, 1000), options })
       )
@@ -537,15 +576,11 @@
         )
 
         // Find cached summary with matching options (focus type, length, language)
-        const focus = options.focus || "key_learning_points"
-        const length = options.length || "short"
-        const languageInstruction = options.languageInstruction || ""
-
         const matchingCached = existingResponses.find(response => {
           const reqOptions = response.request.options || {}
           return (
             (reqOptions.focus || "key_learning_points") === focus &&
-            (reqOptions.length || "short") === length &&
+            (reqOptions.length || defaultLength) === length &&
             (response.request.languageInstruction || "") === languageInstruction
           )
         })
@@ -557,17 +592,49 @@
             length,
             age: this.formatTimeAgo(matchingCached.timestamp),
           })
-          return matchingCached.response.parsed
-        } else {
-          console.log("🔍 No matching cached summary found", {
-            requestedFocus: focus,
-            requestedLength: length,
-            availableSummaries: existingResponses.length,
-            availableTypes: existingResponses.map(r => ({
-              focus: r.request.options?.focus || "key_learning_points",
-              length: r.request.options?.length || "short",
-            })),
-          })
+
+          // Return the cached response in the expected format
+          // Fix: Handle cases where parsed content is missing but raw exists
+          let parsedContent = matchingCached.response.parsed
+
+          // If parsed is empty, null, undefined, an object (old format), or has zero length, but raw exists, format the raw content
+          if (
+            (!parsedContent ||
+              parsedContent === null ||
+              parsedContent === undefined ||
+              typeof parsedContent === "object" || // Handle old object format
+              (typeof parsedContent === "string" &&
+                parsedContent.length === 0)) &&
+            matchingCached.response.raw
+          ) {
+            // Check if raw content is HTML or markdown - with detailed debugging
+            const rawContent = matchingCached.response.raw
+            const hasHTMLTags = rawContent.includes("<")
+            const startsWithMarkdown =
+              rawContent.startsWith("#") || rawContent.startsWith("##")
+            const containsMarkdownHeaders = /^#{1,6}\s/.test(rawContent)
+
+            // Prioritize markdown detection over HTML tag detection
+            const isMarkdown = startsWithMarkdown || containsMarkdownHeaders
+            const shouldFormat = !hasHTMLTags || isMarkdown
+
+            parsedContent = shouldFormat
+              ? this.formatMarkdownToHTML(rawContent)
+              : rawContent
+          }
+
+          const summaryWithMetadata = {
+            raw: matchingCached.response.raw,
+            parsed: parsedContent,
+            metadata: {
+              length: matchingCached.request.options?.length || length,
+              focus: matchingCached.request.options?.focus || focus,
+              timestamp: matchingCached.timestamp,
+              cached: true,
+            },
+          }
+
+          return summaryWithMetadata
         }
       } else {
         console.log("🔄 Bypassing cache for fresh AI summary")
@@ -580,16 +647,6 @@
       }
 
       try {
-        //console.log("🚀 Generating fresh AI summary via Mistral", {
-        //  pageUrl,
-        //  options,
-        //  contentLength: content.length,
-        //})
-
-        const length = options.length || "short"
-        const focus = options.focus || "key_learning_points"
-        const languageInstruction = options.languageInstruction || ""
-
         let prompt = this.buildSummaryPrompt(
           content,
           length,
@@ -607,13 +664,21 @@
         if (response && response.content) {
           const summary = this.parseSummaryResponse(response.content)
 
-          // � UNIFIED STORAGE ONLY: Store as AI response with metadata
+          // Add metadata for UI display
+          summary.metadata = {
+            length,
+            focus,
+            timestamp: Date.now(),
+            cached: false,
+          }
+
+          // 🔄 UNIFIED STORAGE ONLY: Store as AI response with metadata
           const responseKey = await this.storeAIResponse(
             pageUrl,
             "summary",
             {
               content: content.substring(0, 1000),
-              options,
+              options: { ...options, length, focus }, // Store resolved values
               languageInstruction,
             },
             { raw: response.content, parsed: summary },
@@ -622,7 +687,8 @@
 
           console.log("✅ Summary generated and stored in unified system", {
             pageUrl,
-            dynamicSections: summary._dynamicSections?.length || 0,
+            contentLength: summary.raw?.length || 0,
+            isMarkdown: summary.isMarkdown || false,
             responseKey: responseKey?.substring(0, 50) + "...",
           })
 
@@ -653,289 +719,100 @@
 
     buildSummaryPrompt(content, length, focus, languageInstruction = "") {
       const lengthInstructions = {
-        short: "Provide a concise short bullet point summary",
-        medium: "Provide a medium detailed summary with 5-7 bullet point",
-        long: "Provide a detailed point summary with explanations and emphasis on key concepts",
+        short: "Provide a concise bullet point summary (3-4 key points)",
+        medium: "Provide a medium detailed summary with 5-7 bullet points",
+        long: "Provide a detailed summary with 8-10 bullet points including explanations and emphasis on key concepts",
       }
 
       const focusInstructions = {
         key_learning_points:
           "Focus on the most important learning points and key concepts that residents should understand",
         clinical_overview:
-          "Provide a short clinical recap focusing on practical diagnostic and management aspects",
+          "Provide a clinical recap focusing on practical diagnostic and management aspects",
         imaging_pearls:
           "Focus specifically on key imaging findings, techniques, diagnostic pearls, and what radiologists should look for",
         imaging_differential:
           "Focus on imaging-based differential diagnoses, key distinguishing features, and diagnostic decision-making in radiology",
-        clinical_pearls:
-          "Focus on clinical pearls, practical tips, and diagnostic insights",
-        pathology:
-          "Focus on pathological findings, imaging features, and differential diagnoses",
-        treatment:
-          "Focus on treatment approaches, management strategies, and clinical decisions",
       }
 
-      // Create dynamic prompt based on focus type
+      // Create dynamic instructions based on focus type
       let specificInstructions = ""
-      let responseStructure = ""
 
       switch (focus) {
         case "imaging_pearls":
           specificInstructions = `
-- Emphasize imaging modalities, protocols, and technical considerations
-- Highlight specific imaging findings and their significance
-- Include tips for image interpretation and common pitfalls
-- Focus on what makes imaging findings distinctive or pathognomonic`
-          responseStructure = `{
-  "keyPoints": ["imaging finding 1", "technique 2", "interpretation tip 3", ...],
-  "imagingPearls": ["pearl 1", "pearl 2", ...],
-  "technicalTips": ["tip 1", "tip 2", ...],
-}`
+          - Emphasize imaging modalities, protocols, and technical considerations
+          - Highlight specific imaging findings and their significance
+          - Include tips for image interpretation and common pitfalls
+          - Focus on what makes imaging findings distinctive or pathognomonic`
           break
 
         case "imaging_differential":
           specificInstructions = `
-- Focus on differential diagnoses based on imaging appearance
-- Explain key distinguishing imaging features between conditions
-- Include decision trees or diagnostic algorithms when applicable
-- Emphasize imaging characteristics that help narrow the differential`
-          responseStructure = `{
-  "differentials": ["condition 1 with imaging features", "condition 2 with features", ...],
-  "keyDistinguishers": ["feature 1", "feature 2", ...],
-  "imagingApproach": ["step 1", "step 2", ...],
-  
-}`
+          - Focus on differential diagnoses based on imaging appearance
+          - Explain key distinguishing imaging features between conditions
+          - Include decision trees or diagnostic algorithms when applicable
+          - Emphasize imaging characteristics that help narrow the differential`
           break
 
         case "clinical_overview":
           specificInstructions = `
-- Provide a practical, resident-focused clinical summary
-- Include both diagnostic and management considerations
-- Keep it concise but comprehensive for quick review
-- Focus on actionable clinical information`
-          responseStructure = `{
-  "clinicalPoints": ["point 1", "point 2", ...],
-  "diagnosticApproach": ["step 1", "step 2", ...],
-  "keyTakeaways": ["takeaway 1", "takeaway 2", ...],
-  
-}`
+          - Provide a practical, resident-focused clinical summary
+          - Include both diagnostic and management considerations
+          - Keep it concise but comprehensive for quick review
+          - Focus on actionable clinical information`
           break
 
         default:
           specificInstructions = `
-- Include specific imaging findings, anatomical details, and clinical correlations when present
-- Highlight differential diagnoses and key distinguishing features
-- Balance theoretical knowledge with practical application`
-          responseStructure = `{
-  "keyPoints": ["point 1", "point 2", ...],
-  "clinicalPearls": ["pearl 1", "pearl 2", ...],
-  "differentials": ["diff 1", "diff 2", ...],
-  
-  "focusAreas": ["area1", "area2", ...]
-}`
+          - Include specific imaging findings, anatomical details, and clinical correlations when present
+          - Highlight differential diagnoses and key distinguishing features
+          - Balance theoretical knowledge with practical application`
       }
 
-      return `You are a senior radiology educator.
-
-TASK: Create a ${focus.replace(
+      return `You are a senior radiology educator creating a ${focus.replace(
         /_/g,
         " "
-      )} summary of this radiology content for radiology residents.
+      )} summary for radiology residents.
 
-CONTENT: "${content.substring(0, 50000)}"
+      CONTENT: "${content.substring(0)}"
+          
+      INSTRUCTIONS:
+      - ${lengthInstructions[length]}
+      - ${focusInstructions[focus] || focusInstructions.key_learning_points}
+      - Use clear and supportive educational language appropriate for medical learners${specificInstructions}
+      - Structure with clear hierarchy: section headers, main topics with overview text, then specific bullet points
+      - Use ## for section headers (e.g., ## Common Liver Tumors)
+      - Use **topic names** with descriptive text for main topics (e.g., **Hemangioma**: A benign vascular lesion...)
+      - Use - for bullet points with specific learning content
+      - Use **bold** for key terms, characteristics, and important concepts within bullets
+      - Keep logical grouping and proper educational flow
+      - Focus on practical learning points residents need to know${languageInstruction}
 
-INSTRUCTIONS:
-- ${lengthInstructions[length]}
-- ${focusInstructions[focus] || focusInstructions.key_learning_points}
-- Use clear and supportive educational language appropriate for medical learners${specificInstructions}
-- Format as bullet points for easy learning
-- Vary your approach and content based on the specific focus requested${languageInstruction}
-
-RESPONSE FORMAT:
-Provide your response as a JSON object with this structure:
-${responseStructure}`
+      SUMMARY:`
     }
 
     parseSummaryResponse(content) {
-      // First, log the raw content to see what we're getting from AI
-      //console.log(
-      //  "🤖 RAW AI Response (first 1000 chars):",
-      //  content.substring(0, 1000)
-      //)
-      //console.log(
-      //  "🤖 RAW AI Response (last 500 chars):",
-      //  content.substring(content.length - 500)
-      //)
-      //console.log("🤖 RAW AI Response total length:", content.length)
+      // Since we now get markdown text instead of JSON, process it like Q&A responses
+      console.log(
+        "🤖 Summary Response (markdown format):",
+        content.substring(0, 200) + "..."
+      )
 
-      try {
-        // Clean content: remove markdown code blocks and extra formatting
-        let cleanContent = content.trim()
+      // Clean up the response - remove any artifacts
+      let cleanContent = content.trim()
 
-        // Remove markdown code block markers
-        cleanContent = cleanContent.replace(/```json\s*/g, "")
-        cleanContent = cleanContent.replace(/```\s*/g, "")
+      // Remove any potential "SUMMARY:" prefix if the AI included it
+      cleanContent = cleanContent.replace(/^SUMMARY:\s*/i, "")
 
-        // Remove bullet points that might interfere with JSON
-        cleanContent = cleanContent.replace(/^[\s]*[•*-]\s*/gm, "")
+      // Process the markdown to HTML just like Q&A responses
+      const formattedContent = this.formatMarkdownToHTML(cleanContent)
 
-        // Try to extract JSON if it's embedded in text
-        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-          cleanContent = jsonMatch[0]
-        }
-
-        // console.log("🔍 Cleaned content for JSON parsing:", cleanContent)
-
-        // Try to parse as JSON (expecting complete response without truncation)
-        const parsed = JSON.parse(cleanContent)
-
-        // CONTENT ANALYSIS ===")
-        console.log("📊 Parsed Object Keys:", Object.keys(parsed))
-
-        // 🎯 PURE DYNAMIC CONTENT - Use AI's structure exactly as returned
-        // No mapping or predefined fields
-
-        const result = {
-          // Store the original data structure completely unchanged
-          _rawData: parsed,
-          _dynamicSections: [],
-        }
-
-        // Extract sections dynamically from whatever the AI returned
-        Object.keys(parsed).forEach(key => {
-          const value = parsed[key]
-          if (Array.isArray(value) && value.length > 0) {
-            // Create a dynamic section with the AI's original field name as title
-            const sectionTitle = this.formatFieldNameAsTitle(key)
-            result._dynamicSections.push({
-              originalKey: key,
-              title: sectionTitle,
-              content: value,
-              emoji: this.getEmojiForField(key),
-            })
-            //console.log(
-            //  `📋 Dynamic section created: "${sectionTitle}" with ${value.length} items`
-            //)
-          }
-        })
-
-        //console.log("🔍 === PURE DYNAMIC RESULTS ===")
-        //console.log(
-        //  "📊 Total Dynamic Sections:",
-        //  result._dynamicSections.length
-        //)
-        //console.log(
-        //  "📊 Section Titles:",
-        //  result._dynamicSections.map(s => s.title)
-        //)
-        //console.log("📊 Original Data Preserved:", Object.keys(result._rawData))
-
-        // console.log("🔍 === END PURE DYNAMIC PARSING ===")
-
-        return result
-      } catch (e) {
-        console.warn("🔍 JSON parsing failed, using enhanced fallback:", e)
-
-        // Enhanced fallback: try to extract content from partial JSON or structured text
-        const keyPoints = []
-        const clinicalPearls = []
-        const differentials = []
-
-        // Try to extract arrays from partial JSON using regex
-        const keyPointsMatch = content.match(/"keyPoints":\s*\[([\s\S]*?)\]/)
-        const pearlsMatch = content.match(/"clinicalPearls":\s*\[([\s\S]*?)\]/)
-        const differentialsMatch = content.match(
-          /"differentials":\s*\[([\s\S]*?)\]/
-        )
-
-        if (keyPointsMatch) {
-          //console.log("🔧 Found keyPoints in partial JSON")
-          const keyPointsText = keyPointsMatch[1]
-          const points = keyPointsText.match(/"([^"]+)"/g) || []
-          keyPoints.push(...points.map(p => p.replace(/"/g, "")))
-        }
-
-        if (pearlsMatch) {
-          //console.log("🔧 Found clinicalPearls in partial JSON")
-          const pearlsText = pearlsMatch[1]
-          const pearls = pearlsText.match(/"([^"]+)"/g) || []
-          clinicalPearls.push(...pearls.map(p => p.replace(/"/g, "")))
-        }
-
-        if (differentialsMatch) {
-          //console.log("🔧 Found differentials in partial JSON")
-          const diffsText = differentialsMatch[1]
-          const diffs = diffsText.match(/"([^"]+)"/g) || []
-          differentials.push(...diffs.map(p => p.replace(/"/g, "")))
-        }
-
-        // If regex extraction didn't work, fall back to line-by-line parsing
-        if (
-          keyPoints.length === 0 &&
-          clinicalPearls.length === 0 &&
-          differentials.length === 0
-        ) {
-          //console.log("🔧 Using line-by-line fallback parsing")
-          const lines = content.split("\n").filter(line => line.trim())
-          let currentSection = "key"
-
-          for (const line of lines) {
-            const cleanLine = line
-              .replace(/^[-•*]\s*/, "")
-              .replace(/^"/, "")
-              .replace(/",$/, "")
-              .replace(/^\s*[\[\]{}",]\s*/, "") // Remove JSON artifacts
-              .trim()
-
-            // Section detection
-            if (
-              cleanLine.toLowerCase().includes("clinical") ||
-              cleanLine.toLowerCase().includes("pearl")
-            ) {
-              currentSection = "pearls"
-              continue
-            }
-            if (
-              cleanLine.toLowerCase().includes("differential") ||
-              cleanLine.toLowerCase().includes("diagnos")
-            ) {
-              currentSection = "diff"
-              continue
-            }
-
-            // Content extraction
-            if (
-              cleanLine &&
-              !cleanLine.includes("{") &&
-              !cleanLine.includes("}") &&
-              cleanLine.length > 10 &&
-              !cleanLine.includes("keyPoints") &&
-              !cleanLine.includes("clinicalPearls")
-            ) {
-              if (currentSection === "key") {
-                keyPoints.push(cleanLine)
-              } else if (currentSection === "pearls") {
-                clinicalPearls.push(cleanLine)
-              } else if (currentSection === "diff") {
-                differentials.push(cleanLine)
-              }
-            }
-          }
-        }
-
-        //console.log("🔧 Fallback extraction results:", {
-        //  keyPoints: keyPoints.length,
-        //  clinicalPearls: clinicalPearls.length,
-        //  differentials: differentials.length,
-        //})
-
-        return {
-          keyPoints: keyPoints.slice(0, 6),
-          clinicalPearls: clinicalPearls.slice(0, 4),
-          differentials: differentials.slice(0, 4),
-          focusAreas: ["general"],
-        }
+      // Return same structure as Q&A for consistency
+      return {
+        raw: cleanContent, // Original markdown text
+        parsed: formattedContent, // Processed HTML (same as Q&A)
+        isMarkdown: true, // Flag to indicate this is markdown format
       }
     }
 
@@ -1059,89 +936,128 @@ ${responseStructure}`
 
     // Format markdown text for HTML display
     formatMarkdownToHTML(text) {
+      if (!text || typeof text !== "string") {
+        console.warn(
+          "⚠️ formatMarkdownToHTML received invalid input:",
+          typeof text
+        )
+        return text || ""
+      }
+
       let formatted = text
         // First, handle code blocks (triple backticks)
         .replace(
           /```([\s\S]*?)```/g,
-          '<div style="background: #1a3a6b; padding: 12px; border-radius: 6px; margin: 10px 0; font-family: monospace; font-size: 12px; border-left: 4px solid #7198f8; overflow-x: auto;"><code>$1</code></div>'
+          '<div style="background: #1a3a6b; padding: 8px; border-radius: 4px; margin: 6px 0; font-family: monospace; font-size: 11px; border-left: 3px solid #7198f8; overflow-x: auto;"><code>$1</code></div>'
         )
 
         // Handle inline code (single backticks)
         .replace(
           /`([^`]+)`/g,
-          '<code style="background: #1a3a6b; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px;">$1</code>'
+          '<code style="background: #1a3a6b; padding: 1px 4px; border-radius: 3px; font-family: monospace; font-size: 10px;">$1</code>'
         )
 
-        // Handle tables (simple markdown table format)
-        .replace(/\|(.+)\|/g, (match, content) => {
-          // Split by pipes and create table cells
-          const cells = content
-            .split("|")
-            .map(cell => cell.trim())
-            .filter(cell => cell)
-          return `<div style="display: flex; border-bottom: 1px solid #2c4a7c; padding: 4px 0;">${cells
-            .map(
-              cell =>
-                `<div style="flex: 1; padding: 4px 8px; font-size: 12px;">${cell}</div>`
-            )
-            .join("")}</div>`
-        })
-
-        // Convert **bold** to <strong>
+        // Handle headers with proper hierarchy (process longer patterns first!)
+        // H4 (####) - smallest, dark blue
         .replace(
-          /\*\*(.*?)\*\*/g,
-          '<strong style="color: #7198f8;">$1</strong>'
+          /^####\s+(.*$)/gm,
+          '<div style="margin: 8px 0 3px 0; font-size: 12px; font-weight: bold; color: #7198f8;">$1</div>'
         )
 
-        // Convert *italic* to <em>
-        .replace(/\*(.*?)\*/g, '<em style="color: #95a5a6;">$1</em>')
-
-        // Handle headers (### format)
+        // H3 (###) - medium, dark blue
         .replace(
           /^###\s+(.*$)/gm,
-          '<div style="margin: 16px 0 8px 0; font-size: 14px; font-weight: bold; color: #7198f8; border-bottom: 1px solid #2c4a7c; padding-bottom: 4px;">$1</div>'
+          '<div style="margin: 10px 0 4px 0; font-size: 13px; font-weight: bold; color: #7198f8; border-bottom: 1px solid #7198f8; padding-bottom: 2px;">$1</div>'
         )
+
+        // H2 (##) - large, dark blue
         .replace(
           /^##\s+(.*$)/gm,
-          '<div style="margin: 18px 0 10px 0; font-size: 15px; font-weight: bold; color: #7198f8; border-bottom: 2px solid #2c4a7c; padding-bottom: 6px;">$1</div>'
+          '<div style="margin: 12px 0 6px 0; font-size: 15px; font-weight: bold; color: #7198f8; border-bottom: 2px solid #7198f8; padding-bottom: 4px;">$1</div>'
         )
+
+        // H1 (#) - largest, dark blue
         .replace(
           /^#\s+(.*$)/gm,
-          '<div style="margin: 20px 0 12px 0; font-size: 16px; font-weight: bold; color: #7198f8; border-bottom: 2px solid #7198f8; padding-bottom: 8px;">$1</div>'
+          '<div style="margin: 14px 0 8px 0; font-size: 16px; font-weight: bold; color: #7198f8; border-bottom: 2px solid #7198f8; padding-bottom: 4px;">$1</div>'
         )
 
-        // Convert numbered lists with proper indentation
+        // Handle numbered lists - reduced indentation
         .replace(
           /^\d+\.\s+(.*$)/gm,
-          '<div style="margin: 6px 0; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #7198f8; font-weight: bold;">•</span>$1</div>'
+          '<div style="margin: 2px 0 2px 4px; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #7198f8; font-weight: bold;">•</span>$1</div>'
         )
 
-        // Convert bullet points with proper spacing
+        // Handle deeply nested bullet points (4+ spaces + dash/bullet) - third level
         .replace(
-          /^[-•*]\s+(.*$)/gm,
-          '<div style="margin: 6px 0; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #7198f8; font-weight: bold;">•</span>$1</div>'
+          /^    [-•]\s+(.*$)/gm,
+          '<div style="margin: 1px 0 1px 36px; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #7f8c8d; font-weight: normal; font-size: 9px;">▪</span>$1</div>'
         )
 
-        // Convert section headers (bold text followed by colon)
+        // Handle nested bullet points (2-3 spaces + dash/bullet) - second level
         .replace(
-          /^\*\*(.*?):\*\*/gm,
-          '<div style="margin: 12px 0 6px 0; font-weight: bold; color: #7198f8; font-size: 13px;">$1:</div>'
+          /^  [-•]\s+(.*$)/gm,
+          '<div style="margin: 1px 0 1px 20px; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #95a5a6; font-weight: normal; font-size: 10px;">◦</span>$1</div>'
+        )
+
+        // Handle main bullet points - standard size, dark blue bullets (first level)
+        .replace(
+          /^[-•]\s+(.*$)/gm,
+          '<div style="margin: 2px 0 2px 4px; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #7198f8; font-weight: bold;">•</span>$1</div>'
+        )
+
+        // Text formatting - **bold** for emphasis (same color, bold weight)
+        .replace(
+          /\*\*(.*?)\*\*/g,
+          '<strong style="color: #7198f8; font-weight: bold;">$1</strong>'
+        )
+
+        // Remove any italic formatting completely - no *text* processing
+
+        // Handle topic headers at start of lines (e.g., **Topic**: description)
+        .replace(
+          /^(\*\*[^*]+\*\*:\s*)/gm,
+          '<div style="margin: 8px 0 3px 0; font-weight: bold; color: #7198f8; font-size: 12px;">$1</div>'
         )
 
         // Handle horizontal rules
         .replace(
           /^---+$/gm,
-          '<hr style="border: none; border-top: 1px solid #2c4a7c; margin: 15px 0;">'
+          '<hr style="border: none; border-top: 1px solid #2c4a7c; margin: 10px 0;">'
         )
 
         // Handle blockquotes
         .replace(
           /^>\s+(.*$)/gm,
-          '<div style="border-left: 4px solid #7198f8; padding-left: 12px; margin: 8px 0; color: #95a5a6; font-style: italic;">$1</div>'
+          '<div style="border-left: 3px solid #7198f8; padding-left: 8px; margin: 4px 0; color: #7198f8;">$1</div>'
+        )
+
+        // Handle simple tables (basic markdown table support)
+        .replace(/^\|(.+)\|$/gm, (match, content) => {
+          const cells = content.split("|").map(cell => cell.trim())
+          const isHeader = cells.some(
+            cell => cell.includes("**") || cell.includes("---")
+          )
+          const cellTag = isHeader ? "th" : "td"
+          const cellStyle = isHeader
+            ? "padding: 6px 8px; border-bottom: 2px solid #7198f8; font-weight: bold; color: #7198f8; text-align: left;"
+            : "padding: 4px 8px; border-bottom: 1px solid #2c4a7c; color: #e8eaed;"
+
+          return `<tr>${cells
+            .map(
+              cell => `<${cellTag} style="${cellStyle}">${cell}</${cellTag}>`
+            )
+            .join("")}</tr>`
+        })
+
+        // Wrap table rows in table element
+        .replace(
+          /(<tr>.*?<\/tr>[\s\S]*?<tr>.*?<\/tr>)/g,
+          '<table style="width: 100%; border-collapse: collapse; margin: 8px 0; background: #0f2142; border-radius: 6px; overflow: hidden;">$1</table>'
         )
 
         // Convert paragraph breaks (double newlines)
-        .replace(/\n\n/g, '<div style="margin: 12px 0;"></div>')
+        .replace(/\n\n+/g, '<div style="margin: 6px 0;"></div>')
 
         // Convert single line breaks
         .replace(/\n/g, "<br>")
@@ -1314,31 +1230,30 @@ ${responseStructure}`
       }
 
       try {
-        console.log("🚀 Generating fresh AI answer via Mistral")
-
         const prompt = `You are a radiology education expert. Answer the following question based on the provided content.
 
-CONTENT: "${content.substring(0)}"
+        CONTENT: "${content.substring(0)}"
 
-QUESTION: "${question}"
+        QUESTION: "${question}"
 
-INSTRUCTIONS:
-- Provide a clear, educational answer based on the content
-- If the question cannot be answered from the content, say so
-- Use medical terminology appropriately for learning
-- Keep the answer concise but informative
-- Focus on radiology and medical education aspects${languageInstruction}
+        INSTRUCTIONS:
+        - Provide a clear, educational answer based on the content
+        - If the question cannot be answered from the content, say so
+        - Use medical terminology appropriately for learning
+        - Keep the answer concise but informative
+        - Focus on radiology and medical education aspects${languageInstruction}
 
-ANSWER:`
+        ANSWER:`
 
         const response = await this.callMistralAPI(prompt, null, {
           type: "qa",
           pageUrl,
-          question: question.substring(0), // Truncate for logging
+          question: question.substring(0),
         })
 
         if (response && response.content) {
           const rawAnswer = response.content.trim()
+          console.log("🤖 AI Answer:", rawAnswer) //underDEV DELETE LATER
           const formattedAnswer = this.formatMarkdownToHTML(rawAnswer)
 
           // UNIFIED STORAGE ONLY: Store as AI response
@@ -1549,6 +1464,8 @@ ANSWER:`
 
     // Unified API call method with tracking
     async callMistralAPI(prompt, model = null, context = {}) {
+      console.log("🤖 AI API call initiated")
+
       if (!this.apiKey) {
         const noKeyError = new Error("API key required for Mistral AI calls")
         noKeyError.apiErrorDetails = {
@@ -1884,6 +1801,16 @@ ANSWER:`
         }
       }
     }
+
+    // Get user's default length preference
+    async getDefaultLengthPreference() {
+      try {
+        return await GM.getValue("ra_tutor_length", "medium")
+      } catch (error) {
+        console.error("Error loading length preference:", error)
+        return "medium" // Default fallback
+      }
+    }
   }
 
   // ========================================
@@ -2118,7 +2045,7 @@ ANSWER:`
                     <div id="summary-tab" class="tutor-tab active" style="flex: 1; overflow-y: auto; min-height: 0; padding: 5px;">
                         <div id="summary-content" style="width: 100%; min-height: 200px;">
                             <div style="text-align: center;">
-                                <div style="color: #7198f8; font-size: 14px; font-weight: bold;">Loading AI Summary...</div>
+                                <div style="color: #7198f8; font-size: 14px; font-weight: bold;">Loading AI summary...</div>
                                 <div style="color: #95a5a6; font-size: 11px; margin-top: 5px;">Analyzing page content</div>
                             </div>
                         </div>
@@ -2135,83 +2062,19 @@ ANSWER:`
                     -->
                 </div>
 
-                <!-- Settings Section -->
-                <div class="tutor-settings" style="flex-shrink: 0; padding: 5px 5px; background: #38759300); font-size: 11px; border-top: 0px solid #2c4a7c;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-
-
-                        <button id="toggle-settings" style="background: none; border: none; color: #7198f8; cursor: pointer; font-size: 14px; padding: 0; text-align: left; width: 100%;">
-                            <strong>⚙️</strong>
+                <!-- Clean Settings Section - Integrated Design -->
+                <div class="tutor-settings" style="flex-shrink: 0; padding: 8px; background: rgba(18, 50, 98, 0.3); font-size: 11px; border-top: 1px solid #2c4a7c; position: relative;">
+                    <div style="display: flex; justify-content: flex-start; align-items: center;">
+                        <!-- Data Review Button - Main Feature -->
+                        <button id="data-review-btn" style="padding: 6px 8px; background: rgba(23, 162, 184, 0.2); color: #17a2b8; border: 1px solid #17a2b8; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; transition: all 0.2s ease;" title="Review your learning data and usage statistics">
+                            📊 Data
                         </button>
                     </div>
-                    <div id="settings-content" style="display: none; max-height: 200px; overflow-y: auto;">
-                        <!-- Language Selection -->
-                        <div style="margin-bottom: 12px; padding: 8px; background: #1a3a6b; border-radius: 6px;">
-                            <div style="color: #b0bec5; margin-bottom: 6px;"><strong>🌐 AI Response Language</strong></div>
-                            <select id="ai-language-select" style="width: 100%; padding: 6px; background: #0f2142; color: white; border: 1px solid #2c4a7c; border-radius: 4px; font-size: 11px;">
-                                <option value="english">🇬🇧 English (Default)</option>
-                                <option value="slovenian">🇸🇮 Slovensko</option>
-                                <option value="croatian">🇭🇷 Hrvatski</option>
-                                <option value="serbian">🇷🇸 Srpski</option>
-                            </select>
-                            <div style="font-size: 9px; color: #7f8c8d; margin-top: 4px;">AI will respond in the selected language regardless of question language</div>
-                        </div>
-                        
-                        <!-- API Key Management -->
-                        <div style="margin-bottom: 12px; padding: 8px; background: #1a3a6b; border-radius: 6px;">
-                            <div style="color: #b0bec5; margin-bottom: 6px;"><strong>🔑 API Key Status</strong></div>
-                            <div id="api-key-status" style="color: #95a5a6; font-size: 10px; margin-bottom: 6px;">Loading...</div>
-                            <div style="display: flex; gap: 6px;">
-                                <button data-action="manage-api-key" style="padding: 4px 8px; background: #7198f8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-                                    Manage Key
-                                </button>
-                                <button data-action="test-api-key" style="padding: 4px 8px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-                                    Test Key
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <!-- Pricing Management -->
-                        <div style="margin-bottom: 12px; padding: 8px; background: #1a3a6b; border-radius: 6px;">
-                            <div style="color: #b0bec5; margin-bottom: 6px;"><strong>💰 API Pricing Management</strong></div>
-                            <div id="pricing-status" style="color: #95a5a6; font-size: 10px; margin-bottom: 6px;">Loading...</div>
-                            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                                <button data-action="view-pricing" style="padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-                                    📋 View Pricing
-                                </button>
-                                <button data-action="update-pricing" style="padding: 4px 8px; background: #ffc107; color: black; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-                                    ✏️ Update Costs
-                                </button>
-                            </div>
-                            <div style="font-size: 9px; color: #7f8c8d; margin-top: 4px;">Keep pricing current for accurate cost tracking</div>
-                        </div>
-                        
-                        <!-- Data Management -->
-                        <div style="margin-bottom: 12px; padding: 8px; background: #1a3a6b; border-radius: 6px;">
-                            <div style="color: #b0bec5; margin-bottom: 8px;"><strong>💾 Data Management</strong></div>
-                            
-                            <!-- View/Export Section -->
-                            <div style="margin-bottom: 8px; padding: 6px; background: #123262; border-radius: 4px;">
-                                <button data-action="view-data-overview" style="padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px; margin-right: 6px; margin-bottom: 4px;">
-                                    📊 Review Data by Day
-                                </button>
-                                <button data-action="export-data" style="padding: 4px 8px; background: #6f42c1; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-                                    📤 Export Data
-                                </button>
-                            </div>
-                            
-                            <!-- Danger Zone -->
-                            <div style="padding: 6px; background: #2c1810; border-radius: 4px; border: 1px solid #8b4513;">
-                                <div style="color: #ff6b6b; font-size: 10px; margin-bottom: 4px;"><strong>⚠️ Danger Zone</strong></div>
-                                <button data-action="purge-data-keep-key" style="padding: 4px 8px; background: #fd7e14; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px; margin-right: 6px; margin-bottom: 4px;">
-                                    🗑️ Purge Data (Keep API Key)
-                                </button>
-                                <button data-action="purge-all-data" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-                                    💥 Purge Everything
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    
+                    <!-- Integrated Settings Icon - Top Right Corner -->
+                    <button id="open-settings-modal" style="position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; background: rgba(113, 152, 248, 0.1); color: #7198f8; border: 1px solid rgba(113, 152, 248, 0.3); border-radius: 50%; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; z-index: 1;" title="Open settings">
+                        ⚙️
+                    </button>
                 </div>
                 
                 <!-- Attribution Footer - Fixed to bottom -->
@@ -2219,8 +2082,8 @@ ANSWER:`
                     Made with ❤️ by 
                     <a href="https://www.simonrekanovic.com" target="_blank" style="color: #7198f8; text-decoration: none;">simonrekanovic.com</a> • find me on 
                     <a href="https://www.linkedin.com/in/simonrekanovic" target="_blank" style="color: #7198f8; text-decoration: none;">LinkedIn</a><br>
-                    <span style="font-size: 8px; color: #7f8c8d;">The radiology assistant tutor v${
-                      GM.info ? GM.info.script.version : "0.0.1"
+                    <span style="font-size: 10px; color: #7f8c8d;">The radiology assistant tutor v${
+                      GM.info ? GM.info.script.version : ""
                     }
                     <br><strong>CAUTION: AI may generate incorrect or misleading information. Always verify with reliable sources.</strong> </span>
                 </div>
@@ -2324,23 +2187,52 @@ ANSWER:`
         }
       })
 
-      // Settings panel toggle
+      // Settings and Data Review buttons
       const settingsHeader = panel.querySelector(".tutor-settings")
       if (settingsHeader) {
-        const toggleSettings = settingsHeader.querySelector("#toggle-settings")
-        if (toggleSettings) {
-          toggleSettings.addEventListener("click", () => this.toggleSettings())
+        // Settings modal button - integrated design
+        const openSettingsModal = settingsHeader.querySelector(
+          "#open-settings-modal"
+        )
+        if (openSettingsModal) {
+          openSettingsModal.addEventListener("click", () =>
+            this.showSettingsModal()
+          )
+
+          // Add hover effects for small integrated button
+          openSettingsModal.addEventListener("mouseenter", () => {
+            openSettingsModal.style.background = "rgba(113, 152, 248, 0.8)"
+            openSettingsModal.style.color = "white"
+            openSettingsModal.style.transform = "scale(1.1)"
+          })
+          openSettingsModal.addEventListener("mouseleave", () => {
+            openSettingsModal.style.background = "rgba(113, 152, 248, 0.1)"
+            openSettingsModal.style.color = "#7198f8"
+            openSettingsModal.style.transform = "scale(1)"
+          })
+        }
+
+        // Data review button
+        const dataReviewBtn = settingsHeader.querySelector("#data-review-btn")
+        if (dataReviewBtn) {
+          dataReviewBtn.addEventListener("click", () => this.showDataOverview())
+
+          // Add hover effects
+          dataReviewBtn.addEventListener("mouseenter", () => {
+            dataReviewBtn.style.background = "#17a2b8"
+            dataReviewBtn.style.color = "white"
+          })
+          dataReviewBtn.addEventListener("mouseleave", () => {
+            dataReviewBtn.style.background = "rgba(23, 162, 184, 0.2)"
+            dataReviewBtn.style.color = "#17a2b8"
+          })
         }
       }
 
-      // Language selection handler
-      panel.addEventListener("change", e => {
-        if (e.target.id === "ai-language-select") {
-          this.saveLanguagePreference(e.target.value)
-        }
-      })
+      // Language selection handler (now in modal)
+      // Length preference now handled by modal, no dropdown to listen to
 
-      // Initialize settings content
+      // Initialize settings content (for modal)
       this.updateSettingsContent()
     }
 
@@ -2429,12 +2321,26 @@ ANSWER:`
         if (lastSummary) {
           const tempContainer = content.querySelector("#temp-summary-container")
           if (tempContainer) {
-            this.displaySummary(
-              {
-                keyPoints: [this.parseAndFormatResponse(lastSummary.content)],
+            // Fix: Create proper summary object structure that displaySummary expects
+            // Check if content is already HTML or needs formatting
+            const isHTML =
+              lastSummary.content && lastSummary.content.includes("<")
+
+            const formattedContent = isHTML
+              ? lastSummary.content
+              : this.formatMarkdownToHTML(lastSummary.content || "")
+
+            const properSummaryObject = {
+              raw: lastSummary.content, // Original content (could be markdown or HTML)
+              parsed: formattedContent, // Properly formatted HTML content
+              metadata: {
+                focus: lastSummary.focus || "general",
+                timestamp: lastSummary.timestamp,
+                cached: true,
               },
-              tempContainer
-            )
+            }
+
+            this.displaySummary(properSummaryObject, tempContainer)
           }
         } else {
           // No last summary found, generate a default "Main Points" summary
@@ -2442,9 +2348,10 @@ ANSWER:`
           //  "🎯 No last summary found, generating an overview summary"
           //)
 
-          // Set current summary type for default generation
+          // Set current summary type for default generation using user preferences
+          const defaultLength = await this.getLengthPreference()
           this.currentSummaryType = {
-            length: "medium",
+            length: defaultLength,
             focus: "key_learning_points",
           }
 
@@ -2494,33 +2401,71 @@ ANSWER:`
     }
 
     displaySummary(summary, container) {
-      // Show current summary timestamp at top in small font
-      const currentTime = new Date()
-        .toLocaleString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        })
-        .replace(",", "")
+      // Show when this summary was generated using relative time
+      const summaryTimestamp = summary.timestamp || Date.now()
+      const timeAgo = this.getTimeAgo(summaryTimestamp)
 
-      // Use same styling as Q&A answers for consistency
+      // Extract length from summary metadata if available - with debugging
+      let lengthIndicator = ""
+
+      if (summary.metadata && summary.metadata.length) {
+        const lengthMap = {
+          short: "📄 Short",
+          medium: "📋 Medium",
+          long: "📚 Long",
+        }
+        lengthIndicator =
+          lengthMap[summary.metadata.length] || summary.metadata.length
+      } else if (this.currentSummaryType && this.currentSummaryType.length) {
+        // Fallback to current summary type if metadata is missing
+        const lengthMap = {
+          short: "📄 Short",
+          medium: "📋 Medium",
+          long: "📚 Long",
+        }
+        lengthIndicator =
+          lengthMap[this.currentSummaryType.length] ||
+          this.currentSummaryType.length
+        console.log(
+          "🔧 Using fallback length from currentSummaryType:",
+          lengthIndicator
+        )
+      }
+
+      // Use same styling as Q&A answers for consistency but with better spacing
       let html = `
-        <div style="margin-top: 10px; padding: 10px; background: #0f2142; border-radius: 4px; color: #e8eaed; line-height: 1.4;">
-          <div style="margin-bottom: 8px; padding: 4px 8px; background: #0a1f3d; border-radius: 4px; font-size: 9px; color: #7f8c8d; text-align: center;">
-            AI Summary generated: ${currentTime}
+        <div style="margin-top: 8px; padding: 8px; background: #0f2142; border-radius: 4px; color: #e8eaed; line-height: 1.3;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding: 3px 6px; background: #0a1f3d; border-radius: 4px; font-size: 9px; color: #7f8c8d;">
+            <span>AI Summary: ${timeAgo}</span>
+            ${
+              lengthIndicator
+                ? `<span style="background: rgba(113, 152, 248, 0.2); padding: 2px 6px; border-radius: 3px; color: #7198f8; font-weight: bold;">${lengthIndicator}</span>`
+                : ""
+            }
           </div>`
 
-      // 🎯 PURE DYNAMIC CONTENT DISPLAY - Use AI's structure exactly as returned
-      if (summary._dynamicSections && summary._dynamicSections.length > 0) {
-        //console.log(
-        //  "📋 Displaying",
-        //  summary._dynamicSections.length,
-        //  "dynamic sections"
-        //)
-
+      // Check if this is the new unified format (has both raw and parsed)
+      if (summary.parsed && summary.raw) {
+        // Display processed HTML content (already formatted, just like Q&A)
+        html += `
+          <div style="margin-bottom: 6px; font-size: 12px;">
+            ${summary.parsed}
+          </div>
+        `
+      } else if (typeof summary === "string") {
+        // Handle case where summary is just a raw string (legacy or error case)
+        console.log("⚠️ Summary is a plain string, formatting as markdown")
+        const formattedString = this.formatMarkdownToHTML(summary)
+        html += `
+          <div style="margin-bottom: 6px; font-size: 12px;">
+            ${formattedString}
+          </div>
+        `
+      } else if (
+        summary._dynamicSections &&
+        summary._dynamicSections.length > 0
+      ) {
+        // Legacy JSON format support
         summary._dynamicSections.forEach(section => {
           html += `
             <div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2c4a7c;">
@@ -2534,52 +2479,58 @@ ANSWER:`
           `
         })
       } else {
-        // Fallback for legacy summaries or parsing failures
+        // Fallback for any other format
         console.log(
-          "Using fallback display for summary without dynamic sections"
+          "Using fallback display for summary without recognized format"
         )
         html += `
           <div style="margin-bottom: 12px; padding: 12px; background: #1a3a6b; border-radius: 6px; text-align: center; color: #95a5a6;">
             <div style="font-size: 14px; margin-bottom: 8px;">🤖 AI Response Processed</div>
-            <div style="font-size: 11px;">Content structure: ${
-              Object.keys(summary._rawData || {}).join(", ") || "Unknown"
-            }</div>
+            <div style="font-size: 11px;">Content available in exports</div>
           </div>
         `
       }
 
-      // Add regeneration options
+      // Add modern summary type selection interface
       html += `
-        <div style="margin-bottom: 12px; padding-top: 12px; border-top: 0px solid #2c4a7c;">
-          <strong style="color: #7198f8;">🔄 Switch Summary Type:</strong><br>
-          <div style="margin: 10px 0; display: flex; gap: 5px; flex-wrap: wrap;">
-            <button class="summary-switch" data-length="medium" data-focus="key_learning_points" style="padding: 4px 8px; background: #7198f8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-              📝 Main Points
+        <div style="margin-bottom: 16px; padding: 12px; background: linear-gradient(135deg, #1a3a6b, #123262); border-radius: 8px; border: 1px solid #2c4a7c;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <strong style="color: #7198f8; font-size: 13px;">🎯 Summary Focus</strong>
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 10px; color: #95a5a6;">Length:</span>
+              <button id="length-preference-btn" style="padding: 4px 8px; background: rgba(113, 152, 248, 0.2); color: #7198f8; border: 1px solid #7198f8; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; transition: all 0.2s ease;" title="Click to change summary length preference">
+                📏 <span id="length-display">Medium</span>
+              </button>
+            </div>
+          </div>
+          
+          <!-- Equal-level focus options in a 3x1 grid -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 12px;">
+            <button class="summary-switch modern-btn" data-focus="key_learning_points" style="padding: 8px 6px; background: linear-gradient(135deg, #7198f8, #5a84f0); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(113, 152, 248, 0.3); text-align: center;">
+              <div style="font-size: 14px; margin-bottom: 2px;">📝</div>
+              <div>Key Learning</div>
             </button>
-            <button class="summary-switch" data-length="short" data-focus="clinical_overview" style="padding: 4px 8px; background: #7198f8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-              💡 Short Recap
+            <button class="summary-switch modern-btn" data-focus="imaging_pearls" style="padding: 8px 6px; background: linear-gradient(135deg, #28a745, #20c997); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3); text-align: center;">
+              <div style="font-size: 14px; margin-bottom: 2px;">💎</div>
+              <div>Imaging Pearls</div>
             </button>
-            <button class="summary-switch" data-length="medium" data-focus="imaging_pearls" style="padding: 4px 8px; background: #7198f8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-              💎 Imaging Pearls
-            </button>
-            <button class="summary-switch" data-length="medium" data-focus="imaging_differential" style="padding: 4px 8px; background: #7198f8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">
-              🔍 Imaging Differential Key Points
+            <button class="summary-switch modern-btn" data-focus="imaging_differential" style="padding: 8px 6px; background: linear-gradient(135deg, #17a2b8, #20c997); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(23, 162, 184, 0.3); text-align: center;">
+              <div style="font-size: 14px; margin-bottom: 2px;">🔍</div>
+              <div>Differential</div>
             </button>
           </div>
-          <div style="margin-top: 8px;">
-            <button id="regenerate-current-summary" style="padding: 6px 12px; background: #fd7e14; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold;">
-              🔄 Regenerate Current Summary
-            </button>
-          </div>
+          
+          <!-- Regenerate button with better styling -->
+          <button id="regenerate-current-summary" style="width: 100%; padding: 10px 12px; background: linear-gradient(135deg, #fd7e14, #e74c3c); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(253, 126, 20, 0.3);">
+            <span style="margin-right: 6px;">🔄</span>
+            <span>Regenerate Current Summary</span>
+          </button>
         </div>
       `
-      // <button id="show-summary-history" style="padding: 6px 12px; background: #ffc107; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
-      //   📄 Summary History
-      // </button>
       // Add Q&A section with history
       html += `
-        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #2c4a7c;">
-          <strong style="color: #7198f8;">❓ Ask About This Content</strong><br>
+        <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #2c4a7c;">
+          <strong style="color: #7198f8;">❓ Looking for explanation ❓</strong><br>
           <div style="margin: 8px 0;">
             <input type="text" id="question-input" placeholder="Ask a question about this content..." 
                    style="width: 100%; padding: 8px; border: 1px solid #2c4a7c; border-radius: 4px; background: #1a3a6b; color: white; font-size: 12px;">
@@ -2602,19 +2553,41 @@ ANSWER:`
 
       container.innerHTML = html
 
-      // Add event listeners for summary type switching (check cache first)
+      // Update the length display with current preference
+      this.updateLengthDisplay(container)
+
+      // Add event listeners for summary type switching (uses user's length preference)
       const switchButtons = container.querySelectorAll(".summary-switch")
       switchButtons.forEach(button => {
+        // Add hover effects for modern buttons
+        button.addEventListener("mouseenter", () => {
+          button.style.transform = "translateY(-1px)"
+          button.style.boxShadow = button.style.boxShadow.replace(
+            "0 2px 6px",
+            "0 4px 12px"
+          )
+        })
+
+        button.addEventListener("mouseleave", () => {
+          button.style.transform = "translateY(0)"
+          button.style.boxShadow = button.style.boxShadow.replace(
+            "0 4px 12px",
+            "0 2px 6px"
+          )
+        })
+
         button.addEventListener("click", async () => {
-          const length = button.getAttribute("data-length")
           const focus = button.getAttribute("data-focus")
 
+          // Get the user's preferred length instead of using hardcoded value
+          const userLength = await this.getLengthPreference()
+
           // Store current summary type for regeneration
-          this.currentSummaryType = { length, focus }
+          this.currentSummaryType = { length: userLength, focus }
 
           // Visual feedback
-          const originalText = button.innerHTML
-          button.innerHTML = "🔄"
+          const originalContent = button.innerHTML
+          button.innerHTML = "🔄<div>Loading...</div>"
           button.disabled = true
 
           // Show loading in the container
@@ -2628,7 +2601,7 @@ ANSWER:`
             const summary = await this.aiTutor.generateSummary(
               pageContent,
               {
-                length: length,
+                length: userLength, // Use user's preference, not button data
                 focus: focus,
                 languageInstruction,
               },
@@ -2647,24 +2620,51 @@ ANSWER:`
         })
       })
 
+      // Add event listener for length preference button
+      const lengthPrefBtn = container.querySelector("#length-preference-btn")
+      if (lengthPrefBtn) {
+        lengthPrefBtn.addEventListener("click", () => {
+          this.showLengthPreferenceModal()
+        })
+      }
+
       // Add event listener for regenerating current summary (force bypass cache)
       const regenerateButton = container.querySelector(
         "#regenerate-current-summary"
       )
       if (regenerateButton) {
-        regenerateButton.addEventListener("click", async () => {
-          // Check if we have a current summary type to regenerate
-          if (!this.currentSummaryType) {
-            // Default to key_learning_points if no current type
-            this.currentSummaryType = {
-              length: "medium",
-              focus: "key_learning_points",
-            }
-          }
+        // Add hover effects for the regenerate button
+        regenerateButton.addEventListener("mouseenter", () => {
+          regenerateButton.style.transform = "translateY(-1px)"
+          regenerateButton.style.boxShadow =
+            "0 4px 12px rgba(253, 126, 20, 0.4)"
+        })
 
-          // Visual feedback
-          regenerateButton.innerHTML = "🔄 Regenerating..."
+        regenerateButton.addEventListener("mouseleave", () => {
+          regenerateButton.style.transform = "translateY(0)"
+          regenerateButton.style.boxShadow = "0 2px 6px rgba(253, 126, 20, 0.3)"
+        })
+
+        regenerateButton.addEventListener("click", async () => {
+          // Always use current user preferences for regeneration, not original summary settings
+          const currentUserLength = await this.getLengthPreference()
+          const currentUserFocus =
+            this.currentSummaryType?.focus || "key_learning_points"
+
+          console.log("🔄 REGENERATE: Using current user preferences:", {
+            userLength: currentUserLength,
+            focus: currentUserFocus,
+            originalSummaryLength: this.currentSummaryType?.length || "none",
+          })
+
+          // Enhanced visual feedback
+          const originalContent = regenerateButton.innerHTML
+          regenerateButton.innerHTML = `
+            <span style="margin-right: 6px;">🔄</span>
+            <span>Regenerating...</span>
+          `
           regenerateButton.disabled = true
+          regenerateButton.style.opacity = "0.7"
 
           // Show loading in the container
           container.innerHTML = "🔄 Generating fresh summary..."
@@ -2673,16 +2673,22 @@ ANSWER:`
             const pageContent = this.aiTutor.extractPageContent()
             const languageInstruction = await this.getLanguageInstruction()
 
-            // Force regeneration by bypassing cache
+            // Force regeneration with CURRENT user preferences, not original summary settings
             const summary = await this.aiTutor.generateSummary(
               pageContent,
               {
-                length: this.currentSummaryType.length,
-                focus: this.currentSummaryType.focus,
+                length: currentUserLength, // Use current user preference
+                focus: currentUserFocus, // Keep same focus as displayed summary
                 languageInstruction,
               },
               true // Force bypass cache for fresh content
             )
+
+            // Update currentSummaryType to reflect the new settings
+            this.currentSummaryType = {
+              length: currentUserLength,
+              focus: currentUserFocus,
+            }
 
             this.displaySummary(summary, container)
           } catch (error) {
@@ -2843,7 +2849,7 @@ ANSWER:`
         })
       }
 
-      // Add summary history functionality
+      // Add summary history functionality TODO: cleanup
       const showSummaryHistoryButton = container.querySelector(
         "#show-summary-history"
       )
@@ -3127,19 +3133,6 @@ ANSWER:`
                 }
               })
             })
-
-            // Quiz retry button
-            const quizRetryBtns = errorContainer.querySelectorAll(
-              ".error-btn-retry-quiz"
-            )
-            quizRetryBtns.forEach(btn => {
-              btn.addEventListener("click", e => {
-                e.preventDefault()
-                if (context.type === "quiz") {
-                  this.generateQuiz()
-                }
-              })
-            })
           }, 10)
         },
       }
@@ -3296,20 +3289,990 @@ ANSWER:`
     }
 
     // ========================================
-    // ⚙️ COMBINED SETTINGS & STATS PANEL
+    // ⚙️ SETTINGS MODAL SYSTEM
     // ========================================
 
-    // Combined toggle for settings panel (now includes stats)
-    toggleSettings() {
-      const settingsContent = document.getElementById("settings-content")
-
-      if (settingsContent.style.display === "none") {
-        settingsContent.style.display = "block"
-        // Update both settings and stats when opened
-        this.updateSettingsContent()
-      } else {
-        settingsContent.style.display = "none"
+    showSettingsModal() {
+      // Remove any existing settings modal
+      const existing = document.getElementById("settings-modal-overlay")
+      if (existing) {
+        document.body.removeChild(existing)
       }
+
+      // Create modal overlay
+      const overlay = document.createElement("div")
+      overlay.id = "settings-modal-overlay"
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 100001;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(4px);
+      `
+
+      // Create modal container
+      const modal = document.createElement("div")
+      modal.id = "settings-modal-content"
+      modal.style.cssText = `
+        background: linear-gradient(145deg, #123262, #1a3a6b);
+        border-radius: 12px;
+        padding: 0;
+        max-width: 600px;
+        width: 90%;
+        max-height: 85vh;
+        overflow: hidden;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        color: #e8eaed;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        display: flex;
+        flex-direction: column;
+      `
+
+      // Initialize with main settings view
+      this.renderSettingsView(modal, "main")
+
+      overlay.appendChild(modal)
+      document.body.appendChild(overlay)
+
+      // Close on outside click
+      overlay.addEventListener("click", e => {
+        if (e.target === overlay) {
+          document.body.removeChild(overlay)
+        }
+      })
+    }
+
+    renderSettingsView(modal, view, data = {}) {
+      const views = {
+        main: this.getMainSettingsView(),
+        "api-key-setup": this.getApiKeySetupView(),
+        "pricing-management": this.getPricingManagementView(),
+        "pricing-details": this.getPricingDetailsView(data),
+        "data-export": this.getDataExportView(),
+      }
+
+      modal.innerHTML = views[view] || views.main
+
+      // Add event listeners based on current view
+      this.addSettingsViewListeners(modal, view)
+
+      // Load dynamic content for main view
+      if (view === "main") {
+        this.loadSettingsInModal()
+      }
+    }
+
+    getMainSettingsView() {
+      return `
+        <!-- Header -->
+        <div style="padding: 20px 24px; border-bottom: 1px solid #2c4a7c; display: flex; justify-content: space-between; align-items: center;">
+          <h2 style="margin: 0; color: #7198f8; font-size: 18px;">⚙️ Settings</h2>
+          <button id="close-settings-modal" style="background: none; border: none; color: #95a5a6; cursor: pointer; font-size: 24px; padding: 4px; border-radius: 4px; transition: all 0.2s ease;" title="Close settings">×</button>
+        </div>
+
+        <!-- Content -->
+        <div style="flex: 1; overflow-y: auto; padding: 20px 24px;">
+          <!-- 1. Language Selection - TOP PRIORITY -->
+          <div style="margin-bottom: 24px; padding: 16px; background: #0f2142; border-radius: 8px; border: 1px solid #2c4a7c;">
+            <div style="color: #7198f8; margin-bottom: 8px; font-size: 14px; font-weight: bold;">🌐 AI Response Language</div>
+            <select id="ai-language-select-modal" style="width: 100%; padding: 8px; background: #1a3a6b; color: white; border: 1px solid #2c4a7c; border-radius: 6px; font-size: 12px;">
+              <option value="english">🇬🇧 English (Default)</option>
+              <option value="slovenian">🇸🇮 Slovensko</option>
+              <option value="croatian">🇭🇷 Hrvatski</option>
+              <option value="serbian">🇷🇸 Srpski</option>
+            </select>
+            <div style="font-size: 10px; color: #7f8c8d; margin-top: 6px;">AI will respond in the selected language regardless of question language</div>
+          </div>
+
+          <!-- 2. API Key Management -->
+          <div style="margin-bottom: 24px; padding: 16px; background: #0f2142; border-radius: 8px; border: 1px solid #2c4a7c;">
+            <div style="color: #7198f8; margin-bottom: 8px; font-size: 14px; font-weight: bold;">🔑 API Key Management</div>
+            <div id="api-key-status-modal" style="color: #95a5a6; font-size: 11px; margin-bottom: 8px;">Loading...</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button data-nav="api-key-setup" style="padding: 8px 12px; background: #7198f8; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500; transition: all 0.2s ease;">
+                🔑 Manage API Key
+              </button>
+              <button data-action="test-api-key" style="padding: 8px 12px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500; transition: all 0.2s ease;">
+                ✅ Test Key
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. Data Management -->
+          <div style="margin-bottom: 24px; padding: 16px; background: #0f2142; border-radius: 8px; border: 1px solid #2c4a7c;">
+            <div style="color: #7198f8; margin-bottom: 8px; font-size: 14px; font-weight: bold;">💾 Data Management</div>
+            
+            <!-- Export Section -->
+            <div style="margin-bottom: 12px;">
+              <button data-nav="data-export" style="padding: 8px 12px; background: #6f42c1; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500; transition: all 0.2s ease;">
+                📤 Export Data
+              </button>
+            </div>
+            
+            <!-- Danger Zone -->
+            <div style="padding: 12px; background: #2c1810; border-radius: 6px; border: 1px solid #8b4513;">
+              <div style="color: #ff6b6b; font-size: 12px; margin-bottom: 8px; font-weight: bold;">⚠️ Danger Zone</div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button data-action="purge-data-keep-key" style="padding: 6px 12px; background: #fd7e14; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500; transition: all 0.2s ease;">
+                  🗑️ Purge Data (Keep API Key)
+                </button>
+                <button data-action="purge-all-data" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500; transition: all 0.2s ease;">
+                  💥 Purge Everything
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. API Pricing Management - BOTTOM -->
+          <div style="margin-bottom: 0; padding: 16px; background: #0f2142; border-radius: 8px; border: 1px solid #2c4a7c;">
+            <div style="color: #7198f8; margin-bottom: 8px; font-size: 14px; font-weight: bold;">💰 API Pricing Management</div>
+            <div id="pricing-status-modal" style="color: #95a5a6; font-size: 11px; margin-bottom: 8px;">Loading...</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button data-nav="pricing-details" style="padding: 8px 12px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500; transition: all 0.2s ease;">
+                📋 View Pricing
+              </button>
+              <button data-nav="pricing-management" style="padding: 8px 12px; background: #ffc107; color: #333; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500; transition: all 0.2s ease;">
+                ✏️ Update Costs
+              </button>
+            </div>
+            <div style="font-size: 10px; color: #7f8c8d; margin-top: 6px;">Keep pricing current for accurate cost tracking</div>
+          </div>
+        </div>
+      `
+    }
+
+    getApiKeySetupView() {
+      return `
+        <!-- Header with Back Button -->
+        <div style="padding: 20px 24px; border-bottom: 1px solid #2c4a7c; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button data-nav="main" style="background: rgba(113, 152, 248, 0.2); border: 1px solid #7198f8; color: #7198f8; cursor: pointer; font-size: 16px; padding: 6px 8px; border-radius: 4px; transition: all 0.2s ease;" title="Back to settings">←</button>
+            <h2 style="margin: 0; color: #7198f8; font-size: 18px;">🔑 API Key Management</h2>
+          </div>
+          <button id="close-settings-modal" style="background: none; border: none; color: #95a5a6; cursor: pointer; font-size: 24px; padding: 4px; border-radius: 4px; transition: all 0.2s ease;" title="Close settings">×</button>
+        </div>
+
+        <!-- Content -->
+        <div style="flex: 1; overflow-y: auto; padding: 20px 24px;">
+          <div style="margin-bottom: 20px;">
+            <p style="color: #b0bec5; line-height: 1.6; margin-bottom: 20px;">
+              To use AI-powered features, you'll need a Mistral AI API key. Your key is stored securely in your browser only.
+            </p>
+            
+            <div style="margin-bottom: 20px;">
+              <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #7198f8;">API Key:</label>
+              <input type="password" id="mistral-api-key-input" placeholder="Enter your Mistral API key" style="width: 100%; padding: 12px; border: 2px solid #2c4a7c; border-radius: 8px; font-size: 14px; background: #1a3a6b; color: white;">
+            </div>
+            
+            <div style="margin-bottom: 20px; padding: 15px; background: rgba(113, 152, 248, 0.1); border-radius: 8px; border: 1px solid #7198f8;">
+              <div style="font-size: 13px; color: #e8eaed; line-height: 1.5;">
+                <strong>🔒 Privacy & Security:</strong><br>
+                • Your API key is stored only in your browser<br>
+                • Never transmitted except directly to Mistral AI<br>
+                • Can be deleted anytime from these settings<br>
+                • No personal data collected or transmitted
+              </div>
+            </div>
+            
+            <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+              <button id="save-api-key-btn" style="flex: 1; padding: 12px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">
+                💾 Save Key
+              </button>
+              <button id="test-current-key-btn" style="flex: 1; padding: 12px; background: #17a2b8; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">
+                🧪 Test Current Key
+              </button>
+            </div>
+            
+            <!-- Current Key Status -->
+            <div style="padding: 12px; background: #0f2142; border-radius: 6px; border: 1px solid #2c4a7c;">
+              <div style="color: #7198f8; font-size: 12px; font-weight: bold; margin-bottom: 4px;">Current Status:</div>
+              <div id="current-key-status" style="color: #95a5a6; font-size: 11px;">Loading...</div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px;">
+              <p style="font-size: 12px; color: #7f8c8d;">
+                Get your API key at: <a href="https://console.mistral.ai/" target="_blank" style="color: #7198f8; text-decoration: none;">console.mistral.ai</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    getPricingManagementView() {
+      return `
+        <!-- Header with Back Button -->
+        <div style="padding: 20px 24px; border-bottom: 1px solid #2c4a7c; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button data-nav="main" style="background: rgba(113, 152, 248, 0.2); border: 1px solid #7198f8; color: #7198f8; cursor: pointer; font-size: 16px; padding: 6px 8px; border-radius: 4px; transition: all 0.2s ease;" title="Back to settings">←</button>
+            <h2 style="margin: 0; color: #7198f8; font-size: 18px;">💰 Update Pricing</h2>
+          </div>
+          <button id="close-settings-modal" style="background: none; border: none; color: #95a5a6; cursor: pointer; font-size: 24px; padding: 4px; border-radius: 4px; transition: all 0.2s ease;" title="Close settings">×</button>
+        </div>
+
+        <!-- Content -->
+        <div style="flex: 1; overflow-y: auto; padding: 20px 24px;">
+          <div id="pricing-update-content">
+            <div style="text-align: center; padding: 40px;">
+              <div style="color: #7198f8; font-size: 48px; margin-bottom: 16px;">⏳</div>
+              <div style="color: #b0bec5;">Loading pricing management interface...</div>
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    getPricingDetailsView(data) {
+      return `
+        <!-- Header with Back Button -->
+        <div style="padding: 20px 24px; border-bottom: 1px solid #2c4a7c; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button data-nav="main" style="background: rgba(113, 152, 248, 0.2); border: 1px solid #7198f8; color: #7198f8; cursor: pointer; font-size: 16px; padding: 6px 8px; border-radius: 4px; transition: all 0.2s ease;" title="Back to settings">←</button>
+            <h2 style="margin: 0; color: #7198f8; font-size: 18px;">📋 Pricing Details</h2>
+          </div>
+          <button id="close-settings-modal" style="background: none; border: none; color: #95a5a6; cursor: pointer; font-size: 24px; padding: 4px; border-radius: 4px; transition: all 0.2s ease;" title="Close settings">×</button>
+        </div>
+
+        <!-- Content -->
+        <div style="flex: 1; overflow-y: auto; padding: 20px 24px;">
+          <div id="pricing-details-content">
+            <div style="text-align: center; padding: 40px;">
+              <div style="color: #7198f8; font-size: 48px; margin-bottom: 16px;">⏳</div>
+              <div style="color: #b0bec5;">Loading pricing details...</div>
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    getDataExportView() {
+      return `
+        <!-- Header with Back Button -->
+        <div style="padding: 20px 24px; border-bottom: 1px solid #2c4a7c; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button data-nav="main" style="background: rgba(113, 152, 248, 0.2); border: 1px solid #7198f8; color: #7198f8; cursor: pointer; font-size: 16px; padding: 6px 8px; border-radius: 4px; transition: all 0.2s ease;" title="Back to settings">←</button>
+            <h2 style="margin: 0; color: #7198f8; font-size: 18px;">📤 Export Data</h2>
+          </div>
+          <button id="close-settings-modal" style="background: none; border: none; color: #95a5a6; cursor: pointer; font-size: 24px; padding: 4px; border-radius: 4px; transition: all 0.2s ease;" title="Close settings">×</button>
+        </div>
+
+        <!-- Content -->
+        <div style="flex: 1; overflow-y: auto; padding: 20px 24px;">
+          <div style="margin-bottom: 20px;">
+            <p style="color: #b0bec5; line-height: 1.6; margin-bottom: 20px;">
+              Export your learning data including Q&A history, summaries, and usage statistics.
+            </p>
+            
+            <div style="display: grid; gap: 16px;">
+              <button id="export-all-data-btn" style="padding: 16px; background: #6f42c1; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s ease; text-align: left;">
+                <div style="font-size: 14px; margin-bottom: 4px;">📦 Export Q&A + Summaries</div>
+                <div style="font-size: 11px; opacity: 0.8;">Combined Q&A and summaries in one clean CSV file</div>
+              </button>
+              
+              <button id="export-qa-only-btn" style="padding: 16px; background: #17a2b8; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s ease; text-align: left;">
+                <div style="font-size: 14px; margin-bottom: 4px;">❓ Export Q&A Only</div>
+                <div style="font-size: 11px; opacity: 0.8;">Just your question and answer history</div>
+              </button>
+              
+              <button id="export-summaries-only-btn" style="padding: 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s ease; text-align: left;">
+                <div style="font-size: 14px; margin-bottom: 4px;">📋 Export Summaries Only</div>
+                <div style="font-size: 11px; opacity: 0.8;">Just your AI-generated summaries</div>
+              </button>
+
+              <button id="export-metadata-btn" style="padding: 16px; background: #fd7e14; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s ease; text-align: left;">
+                <div style="font-size: 14px; margin-bottom: 4px;">📊 Export Usage Overview</div>
+                <div style="font-size: 11px; opacity: 0.8;">App statistics, API usage, and metadata summary</div>
+              </button>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 12px; background: rgba(113, 152, 248, 0.1); border-radius: 6px; border: 1px solid #7198f8;">
+              <div style="font-size: 12px; color: #e8eaed; line-height: 1.5;">
+                <strong>📝 Export Format:</strong> Data is exported as CSV files with date-time stamps in filenames for easy organization.
+              </div>
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    addSettingsViewListeners(modal, view) {
+      // Close button
+      const closeBtn = modal.querySelector("#close-settings-modal")
+      if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+          const overlay = document.getElementById("settings-modal-overlay")
+          if (overlay) document.body.removeChild(overlay)
+        })
+      }
+
+      // Navigation buttons
+      modal.addEventListener("click", e => {
+        const nav = e.target.dataset.nav
+        if (nav) {
+          this.renderSettingsView(modal, nav)
+          return
+        }
+
+        // Handle actions based on current view
+        const action = e.target.dataset.action
+        if (action) {
+          this.handleSettingsAction(action, modal, view)
+        }
+      })
+
+      // View-specific listeners
+      switch (view) {
+        case "main":
+          // Language selection
+          const languageSelect = modal.querySelector(
+            "#ai-language-select-modal"
+          )
+          if (languageSelect) {
+            languageSelect.addEventListener("change", e => {
+              this.saveLanguagePreference(e.target.value)
+            })
+          }
+          break
+
+        case "api-key-setup":
+          // API key save button
+          const saveBtn = modal.querySelector("#save-api-key-btn")
+          const keyInput = modal.querySelector("#mistral-api-key-input")
+          if (saveBtn && keyInput) {
+            saveBtn.addEventListener("click", async () => {
+              const key = keyInput.value.trim()
+              if (key) {
+                await this.saveApiKey(key)
+                this.showBriefNotification("✅ API key saved successfully!")
+                this.renderSettingsView(modal, "main") // Go back to main
+              }
+            })
+          }
+
+          // Test current key button
+          const testBtn = modal.querySelector("#test-current-key-btn")
+          if (testBtn) {
+            testBtn.addEventListener("click", () => {
+              this.testApiKey()
+            })
+          }
+
+          // Load current key status
+          this.updateApiKeyStatus("current-key-status")
+          break
+
+        case "pricing-management":
+          // Load pricing management interface
+          setTimeout(() => {
+            this.loadPricingManagementInterface(modal)
+          }, 100)
+          break
+
+        case "pricing-details":
+          // Load pricing details
+          setTimeout(() => {
+            this.loadPricingDetailsInterface(modal)
+          }, 100)
+          break
+
+        case "data-export":
+          // Export buttons
+          const exportAllBtn = modal.querySelector("#export-all-data-btn")
+          const exportQABtn = modal.querySelector("#export-qa-only-btn")
+          const exportSummariesBtn = modal.querySelector(
+            "#export-summaries-only-btn"
+          )
+          const exportMetadataBtn = modal.querySelector("#export-metadata-btn")
+
+          if (exportAllBtn) {
+            exportAllBtn.addEventListener("click", () =>
+              this.exportCombinedData()
+            )
+          }
+          if (exportQABtn) {
+            exportQABtn.addEventListener("click", () => this.exportQAData())
+          }
+          if (exportSummariesBtn) {
+            exportSummariesBtn.addEventListener("click", () =>
+              this.exportSummariesData()
+            )
+          }
+          if (exportMetadataBtn) {
+            exportMetadataBtn.addEventListener("click", () =>
+              this.exportMetadataOverview()
+            )
+          }
+          break
+      }
+    }
+
+    handleSettingsAction(action, modal, view) {
+      switch (action) {
+        case "test-api-key":
+          this.testApiKey()
+          break
+        case "purge-data-keep-key":
+          this.purgeDataKeepKey()
+          break
+        case "purge-all-data":
+          this.purgeAllData()
+          break
+        case "back-to-pricing":
+          this.renderSettingsView(modal, "pricing-management")
+          break
+        default:
+          console.log("Unhandled settings action:", action)
+      }
+    }
+
+    async saveApiKey(key) {
+      try {
+        await GM.setValue("ra_tutor_mistral_api_key", key)
+        this.aiTutor.apiKey = key
+        this.updateSettingsContent() // Update main settings if visible
+      } catch (error) {
+        console.error("Error saving API key:", error)
+        throw error
+      }
+    }
+
+    loadPricingManagementInterface(modal) {
+      const content = modal.querySelector("#pricing-update-content")
+      if (content) {
+        // Integrated pricing management interface
+        content.innerHTML = `
+          <div style="margin-bottom: 20px;">
+            <p style="color: #b0bec5; line-height: 1.6; margin-bottom: 20px;">
+              Update Mistral AI pricing rates to ensure accurate cost tracking. Custom rates override default pricing.
+            </p>
+            
+            <div style="display: grid; gap: 16px;">
+              <div style="padding: 16px; background: #0f2142; border-radius: 8px; border: 1px solid #2c4a7c;">
+                <div style="color: #7198f8; font-size: 14px; font-weight: bold; margin-bottom: 8px;">� Current Pricing Status</div>
+                <div id="pricing-management-status" style="color: #95a5a6; font-size: 11px;">Loading...</div>
+              </div>
+              
+              <div style="padding: 16px; background: #0f2142; border-radius: 8px; border: 1px solid #2c4a7c;">
+                <div style="color: #7198f8; font-size: 14px; font-weight: bold; margin-bottom: 12px;">⚙️ Quick Actions</div>
+                <div style="display: grid; gap: 8px;">
+                  <button id="reset-to-defaults-btn" style="padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s ease;">
+                    🔄 Reset to Default Pricing
+                  </button>
+                  <button id="update-from-mistral-btn" style="padding: 10px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s ease;">
+                    🌐 Fetch Latest from Mistral
+                  </button>
+                  <button id="manual-pricing-btn" style="padding: 10px; background: #ffc107; color: #333; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s ease;">
+                    ✏️ Manual Price Editor
+                  </button>
+                </div>
+              </div>
+              
+              <div style="padding: 12px; background: rgba(113, 152, 248, 0.1); border-radius: 6px; border: 1px solid #7198f8;">
+                <div style="font-size: 12px; color: #e8eaed; line-height: 1.5;">
+                  <strong>📝 Note:</strong> Pricing updates affect cost calculations for new AI requests. Historical data remains unchanged.
+                </div>
+              </div>
+            </div>
+          </div>
+        `
+
+        // Add event listeners for the integrated buttons
+        setTimeout(() => {
+          this.addPricingManagementListeners(modal)
+          this.updatePricingManagementStatus()
+        }, 100)
+      }
+    }
+
+    loadPricingDetailsInterface(modal) {
+      const content = modal.querySelector("#pricing-details-content")
+      if (content) {
+        // Integrated pricing details interface
+        content.innerHTML = `
+          <div style="margin-bottom: 20px;">
+            <p style="color: #b0bec5; line-height: 1.6; margin-bottom: 20px;">
+              Current Mistral AI pricing rates and cost information for all available models.
+            </p>
+            
+            <div id="pricing-details-list" style="display: grid; gap: 12px;">
+              <div style="text-align: center; padding: 40px;">
+                <div style="color: #7198f8; font-size: 24px; margin-bottom: 12px;">⏳</div>
+                <div style="color: #b0bec5;">Loading pricing details...</div>
+              </div>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 12px; background: rgba(113, 152, 248, 0.1); border-radius: 6px; border: 1px solid #7198f8;">
+              <div style="font-size: 12px; color: #e8eaed; line-height: 1.5;">
+                <strong>💡 Tip:</strong> Prices shown include both input and output token costs. Custom pricing overrides are highlighted.
+              </div>
+            </div>
+          </div>
+        `
+
+        // Load actual pricing details
+        setTimeout(() => {
+          this.loadActualPricingDetails()
+        }, 100)
+      }
+    }
+
+    addPricingManagementListeners(modal) {
+      // Reset to defaults button
+      const resetBtn = modal.querySelector("#pricing-reset-defaults")
+      if (resetBtn) {
+        resetBtn.addEventListener("click", async () => {
+          if (
+            confirm(
+              "Reset all pricing to Mistral AI defaults? This cannot be undone."
+            )
+          ) {
+            await this.resetPricingToDefaults()
+            this.showBriefNotification("✅ Pricing reset to defaults")
+            this.updatePricingManagementStatus()
+          }
+        })
+      }
+
+      // Fetch from Mistral button
+      const fetchBtn = modal.querySelector("#pricing-fetch-mistral")
+      if (fetchBtn) {
+        fetchBtn.addEventListener("click", async () => {
+          const button = fetchBtn
+          const originalText = button.textContent
+          button.textContent = "Fetching..."
+          button.disabled = true
+
+          try {
+            await this.fetchLatestPricingFromMistral()
+            this.showBriefNotification("✅ Latest pricing fetched successfully")
+            this.updatePricingManagementStatus()
+          } catch (error) {
+            this.showBriefNotification(
+              "❌ Failed to fetch pricing: " + error.message
+            )
+          } finally {
+            button.textContent = originalText
+            button.disabled = false
+          }
+        })
+      }
+
+      // Manual editor button
+      const editorBtn = modal.querySelector("#pricing-manual-editor")
+      if (editorBtn) {
+        editorBtn.addEventListener("click", () => {
+          this.openPricingManualEditor(modal)
+        })
+      }
+    }
+
+    addPricingDetailsListeners(modal) {
+      // Refresh button
+      const refreshBtn = modal.querySelector("#refresh-pricing-details")
+      if (refreshBtn) {
+        refreshBtn.addEventListener("click", () => {
+          this.loadActualPricingDetails()
+        })
+      }
+    }
+
+    updatePricingManagementStatus() {
+      const statusElement = document.getElementById("pricing-management-status")
+      if (statusElement) {
+        // Get current pricing status and display
+        const currentConfig = this.getPricingConfiguration()
+        const lastUpdate = this.getLastPricingUpdate()
+
+        let statusText = "✅ Default pricing active"
+        if (currentConfig && currentConfig.customPricing) {
+          statusText = "⚙️ Custom pricing configured"
+        }
+
+        statusElement.innerHTML = `
+          <div style="color: #4caf50; font-size: 12px; margin-bottom: 4px;">${statusText}</div>
+          <div style="color: #b0bec5; font-size: 11px;">
+            Last updated: ${lastUpdate || "Never"}
+          </div>
+        `
+      }
+    }
+
+    async loadSettingsInModal() {
+      // Load language preference
+      try {
+        const language = await this.getLanguagePreference()
+        const languageSelect = document.getElementById(
+          "ai-language-select-modal"
+        )
+        if (languageSelect) {
+          languageSelect.value = language
+        }
+      } catch (error) {
+        console.error("Error loading language preference:", error)
+      }
+
+      // Load API key status
+      this.updateApiKeyStatus("api-key-status-modal")
+
+      // Load pricing status
+      this.updatePricingStatus("pricing-status-modal")
+    }
+
+    exportQAData() {
+      this.exportDataType("qa", "Q&A Data")
+    }
+
+    exportSummariesData() {
+      this.exportDataType("summaries", "AI Summaries")
+    }
+
+    exportMetadataOverview() {
+      this.exportAppMetadata()
+    }
+
+    async exportAppMetadata() {
+      try {
+        const allKeys = await GM.listValues()
+        const responseKeys = allKeys.filter(key =>
+          key.startsWith("ai_response_")
+        )
+        const tokenLogKeys = allKeys.filter(key => key.startsWith("token_log_"))
+
+        // Collect metadata summary
+        const metadata = []
+        let qaCount = 0
+        let summaryCount = 0
+        let totalTokens = 0
+        let totalCost = 0
+        const modelUsage = {}
+        const pageActivity = {}
+        let firstActivity = null
+        let lastActivity = null
+
+        // Process responses for metadata
+        for (const key of responseKeys) {
+          const data = await GM.getValue(key, null)
+          if (data) {
+            const response = JSON.parse(data)
+            const timestamp = new Date(response.timestamp)
+
+            if (!firstActivity || timestamp < firstActivity)
+              firstActivity = timestamp
+            if (!lastActivity || timestamp > lastActivity)
+              lastActivity = timestamp
+
+            if (response.type === "qa") {
+              qaCount++
+            } else if (response.type === "summary") {
+              summaryCount++
+            }
+
+            // Track model usage
+            const model = response.metadata?.model || "unknown"
+            modelUsage[model] = (modelUsage[model] || 0) + 1
+
+            // Track page activity
+            const pageUrl = response.pageUrl || "unknown"
+            pageActivity[pageUrl] = (pageActivity[pageUrl] || 0) + 1
+          }
+        }
+
+        // Process token logs for metadata
+        for (const key of tokenLogKeys) {
+          const data = await GM.getValue(key, null)
+          if (data) {
+            const log = JSON.parse(data)
+            totalTokens += log.tokens?.total || 0
+            totalCost += log.cost || 0
+          }
+        }
+
+        // Create metadata summary
+        metadata.push({
+          metric: "Total Q&A Interactions",
+          value: qaCount,
+          category: "Usage Stats",
+        })
+        metadata.push({
+          metric: "Total AI Summaries Generated",
+          value: summaryCount,
+          category: "Usage Stats",
+        })
+        metadata.push({
+          metric: "Total Pages Analyzed",
+          value: Object.keys(pageActivity).length,
+          category: "Usage Stats",
+        })
+        metadata.push({
+          metric: "First Activity",
+          value: firstActivity
+            ? firstActivity.toISOString().split("T")[0]
+            : "N/A",
+          category: "Timeline",
+        })
+        metadata.push({
+          metric: "Last Activity",
+          value: lastActivity
+            ? lastActivity.toISOString().split("T")[0]
+            : "N/A",
+          category: "Timeline",
+        })
+        metadata.push({
+          metric: "Total API Tokens Used",
+          value: totalTokens,
+          category: "API Usage",
+        })
+        metadata.push({
+          metric: "Total API Cost (USD)",
+          value: totalCost.toFixed(4),
+          category: "API Usage",
+        })
+        metadata.push({
+          metric: "API Key Configured",
+          value: this.aiTutor.hasApiKey() ? "Yes" : "No",
+          category: "Configuration",
+        })
+        metadata.push({
+          metric: "Language Setting",
+          value: await GM.getValue("ra_tutor_language", "english"),
+          category: "Configuration",
+        })
+
+        // Add top models
+        Object.entries(modelUsage)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 3)
+          .forEach(([model, count], index) => {
+            metadata.push({
+              metric: `Top Model ${index + 1}`,
+              value: `${model} (${count} uses)`,
+              category: "Model Usage",
+            })
+          })
+
+        // Add top pages
+        Object.entries(pageActivity)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5)
+          .forEach(([page, count], index) => {
+            metadata.push({
+              metric: `Top Page ${index + 1}`,
+              value: `${page.split("/").pop() || page} (${count} interactions)`,
+              category: "Page Activity",
+            })
+          })
+
+        const headers = ["metric", "value", "category"]
+        const csvContent = this.generateCSV(
+          metadata,
+          headers,
+          "App Metadata Overview"
+        )
+
+        // Create filename with date and time
+        const now = new Date()
+        const dateStr = now.toISOString().split("T")[0]
+        const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "-")
+        const filename = `radiology-tutor-metadata-overview-${dateStr}-${timeStr}.csv`
+
+        this.downloadCSV(csvContent, filename)
+
+        this.showBriefNotification(
+          `✅ Metadata overview exported successfully!`
+        )
+      } catch (error) {
+        console.error("📤 Error in exportAppMetadata:", error)
+        this.showBriefNotification(
+          `❌ Error exporting metadata: ${error.message}`
+        )
+      }
+    }
+
+    async exportDataType(dataType, displayName) {
+      try {
+        const allKeys = await GM.listValues()
+        const responseKeys = allKeys.filter(key =>
+          key.startsWith("ai_response_")
+        )
+
+        let dataArray = []
+        let headers = []
+        let filename = ""
+
+        if (dataType === "qa") {
+          // Process Q&A data
+          headers = [
+            "date",
+            "time",
+            "page_title",
+            "page_url",
+            "question",
+            "answer",
+            "answer_length",
+            "model_used",
+            "length_setting",
+            "language",
+          ]
+          filename = `radiology-tutor-qa-export-${
+            new Date().toISOString().split("T")[0]
+          }-${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.csv`
+
+          for (const key of responseKeys) {
+            const data = await GM.getValue(key, null)
+            if (data) {
+              const response = JSON.parse(data)
+              if (response.type === "qa") {
+                const answerText =
+                  response.response.raw || response.response.parsed || ""
+                dataArray.push({
+                  date: new Date(response.timestamp)
+                    .toISOString()
+                    .split("T")[0],
+                  time: new Date(response.timestamp)
+                    .toISOString()
+                    .split("T")[1]
+                    .split(".")[0],
+                  page_title: response.pageTitle || "Unknown",
+                  page_url: response.pageUrl || "Unknown",
+                  question: response.request.question || "",
+                  answer: answerText,
+                  answer_length: answerText.length,
+                  model_used: response.metadata?.model || "unknown",
+                  length_setting: "N/A", // Q&A doesn't have length setting
+                  language: response.request.languageInstruction
+                    ? "non-english"
+                    : "english",
+                })
+              }
+            }
+          }
+        } else if (dataType === "summaries") {
+          // Process Summaries data - match Q&A format structure
+          headers = [
+            "date",
+            "time",
+            "page_title",
+            "page_url",
+            "summary_focus",
+            "summary_content",
+            "summary_length",
+            "model_used",
+            "length_setting",
+            "language",
+          ]
+          filename = `radiology-tutor-summaries-export-${
+            new Date().toISOString().split("T")[0]
+          }-${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.csv`
+
+          for (const key of responseKeys) {
+            const data = await GM.getValue(key, null)
+            if (data) {
+              const response = JSON.parse(data)
+              if (response.type === "summary") {
+                // Handle both new markdown format and legacy JSON format
+                let summaryContent = ""
+                if (response.response && response.response.raw) {
+                  // New markdown format - use full raw content (same as Q&A)
+                  summaryContent = response.response.raw
+                } else if (response.response && response.response.parsed) {
+                  // Alternative format
+                  summaryContent = response.response.parsed
+                } else {
+                  // Fallback for other formats
+                  summaryContent = JSON.stringify(response.response || {})
+                }
+
+                dataArray.push({
+                  date: new Date(response.timestamp)
+                    .toISOString()
+                    .split("T")[0],
+                  time: new Date(response.timestamp)
+                    .toISOString()
+                    .split("T")[1]
+                    .split(".")[0],
+                  page_title: response.pageTitle || "Unknown",
+                  page_url: response.pageUrl || "Unknown",
+                  summary_focus:
+                    response.request.options?.focus ||
+                    response.request.focus ||
+                    "general",
+                  summary_content: summaryContent, // Full content, not preview
+                  summary_length: summaryContent.length, // Character count of content
+                  model_used: response.metadata?.model || "unknown",
+                  length_setting:
+                    response.request.options?.length ||
+                    response.request.length ||
+                    "medium",
+                  language: response.request.languageInstruction
+                    ? "non-english"
+                    : "english",
+                })
+              }
+            }
+          }
+        }
+
+        // Sort by date (most recent first)
+        dataArray.sort(
+          (a, b) =>
+            new Date(b.date + "T" + b.time) - new Date(a.date + "T" + a.time)
+        )
+
+        if (dataArray.length === 0) {
+          this.showBriefNotification(
+            `📭 No ${displayName.toLowerCase()} found to export`
+          )
+          return
+        }
+
+        // Generate CSV content
+        const csvContent = this.generateCSV(dataArray, headers, displayName)
+
+        // Download the file
+        this.downloadCSV(csvContent, filename)
+
+        this.showBriefNotification(
+          `✅ ${displayName} exported successfully! (${dataArray.length} items)`
+        )
+      } catch (error) {
+        console.error(`📤 Error in export${dataType}:`, error)
+        this.showBriefNotification(
+          `❌ Error exporting ${displayName.toLowerCase()}: ${error.message}`
+        )
+      }
+    }
+
+    generateCSV(dataArray, headers, sectionName) {
+      const csvRows = [
+        // Only the actual CSV headers - no metadata mixed in
+        headers.join(","), // Header row
+        ...dataArray.map(row =>
+          headers.map(header => this.escapeCSV(row[header])).join(",")
+        ),
+      ]
+
+      return csvRows.join("\n")
+    }
+
+    downloadCSV(csvContent, filename) {
+      const dataBlob = new Blob([csvContent], {
+        type: "text/csv;charset=utf-8;",
+      })
+      const url = URL.createObjectURL(dataBlob)
+
+      const link = document.createElement("a")
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
     }
 
     async saveLanguagePreference(language) {
@@ -3348,6 +4311,44 @@ ANSWER:`
       } catch (error) {
         console.error("Error loading language preference:", error)
         return "english" // Default fallback
+      }
+    }
+
+    async saveLengthPreference(length) {
+      try {
+        await GM.setValue("ra_tutor_length", length)
+        //console.log(`📏 Length preference saved: ${length}`)
+
+        // Show brief confirmation with length name
+        const lengthNames = {
+          short: "Short",
+          medium: "Medium",
+          long: "Long",
+        }
+
+        const lengthSelect = document.getElementById("ai-length-select")
+        if (lengthSelect) {
+          const originalStyle = lengthSelect.style.background
+          lengthSelect.style.background = "#28a745"
+
+          setTimeout(() => {
+            lengthSelect.style.background = originalStyle
+          }, 1500)
+
+          //console.log(`📏 Default summary length set to: ${lengthNames[length]}`)
+        }
+      } catch (error) {
+        console.error("Error saving length preference:", error)
+      }
+    }
+
+    async getLengthPreference() {
+      try {
+        const length = await GM.getValue("ra_tutor_length", "medium")
+        return length
+      } catch (error) {
+        console.error("Error loading length preference:", error)
+        return "medium" // Default fallback
       }
     }
 
@@ -4380,263 +5381,248 @@ ANSWER:`
       }
     }
 
-    async exportAllData() {
-      console.log("📤 exportAllData called")
+    async exportCombinedData() {
       try {
         const allKeys = await GM.listValues()
-
-        // Get all unified AI responses
         const responseKeys = allKeys.filter(key =>
           key.startsWith("ai_response_")
         )
         const tokenLogKeys = allKeys.filter(key => key.startsWith("token_log_"))
-        const otherKeys = allKeys.filter(
-          key =>
-            !key.startsWith("ai_response_") &&
-            !key.startsWith("token_log_") &&
-            key !== "mistral_api_key" &&
-            key !== "ra_tutor_language"
-        )
 
-        // Prepare spreadsheet-friendly data structure
-        const exportData = {
-          metadata: {
-            exportDate: new Date().toISOString(),
-            scriptVersion: GM.info ? GM.info.script.version : "testing",
-            totalResponses: responseKeys.length,
-            totalTokenLogs: tokenLogKeys.length,
-          },
+        // Collect all data types
+        const qaData = []
+        const summariesData = []
+        const tokenUsageData = []
 
-          // Spreadsheet-ready Q&A data
-          questions_and_answers: [],
-
-          // Spreadsheet-ready summaries data
-          summaries: [],
-
-          // Token usage logs for analysis
-          token_usage: [],
-
-          // Settings and preferences
-          settings: {
-            apiKeyConfigured: this.aiTutor.hasApiKey(),
-            language: await GM.getValue("ra_tutor_language", "english"),
-          },
-        }
-
-        // Process AI responses into spreadsheet format
+        // Process responses
         for (const key of responseKeys) {
-          try {
-            const data = await GM.getValue(key, null)
-            if (data) {
-              const response = JSON.parse(data)
+          const data = await GM.getValue(key, null)
+          if (data) {
+            const response = JSON.parse(data)
 
-              if (response.type === "qa") {
-                exportData.questions_and_answers.push({
-                  date: new Date(response.timestamp)
-                    .toISOString()
-                    .split("T")[0],
-                  time: new Date(response.timestamp)
-                    .toISOString()
-                    .split("T")[1]
-                    .split(".")[0],
-                  page_title: response.pageTitle || "Unknown",
-                  page_url: response.pageUrl || "Unknown",
-                  question: response.request.question || "",
-                  answer:
-                    response.response.raw || response.response.parsed || "",
-                  model_used: response.metadata?.model || "unknown",
-                  question_length: response.metadata?.questionLength || 0,
-                  language: response.request.languageInstruction
-                    ? "non-english"
-                    : "english",
-                })
-              } else if (response.type === "summary") {
-                exportData.summaries.push({
-                  date: new Date(response.timestamp)
-                    .toISOString()
-                    .split("T")[0],
-                  time: new Date(response.timestamp)
-                    .toISOString()
-                    .split("T")[1]
-                    .split(".")[0],
-                  page_title: response.pageTitle || "Unknown",
-                  page_url: response.pageUrl || "Unknown",
-                  summary_focus: response.request.focus || "general",
-                  summary_length: response.request.length || "medium",
-                  content_preview:
-                    (response.response.raw || "").substring(0, 200) + "...",
-                  model_used: response.metadata?.model || "unknown",
-                  language: response.request.languageInstruction
-                    ? "non-english"
-                    : "english",
-                })
+            if (response.type === "qa") {
+              qaData.push({
+                date: new Date(response.timestamp).toISOString().split("T")[0],
+                time: new Date(response.timestamp)
+                  .toISOString()
+                  .split("T")[1]
+                  .split(".")[0],
+                page_title: response.pageTitle || "Unknown",
+                page_url: response.pageUrl || "Unknown",
+                question: response.request.question || "",
+                answer: response.response.raw || response.response.parsed || "",
+                model_used: response.metadata?.model || "unknown",
+                question_length: response.metadata?.questionLength || 0,
+                language: response.request.languageInstruction
+                  ? "non-english"
+                  : "english",
+              })
+            } else if (response.type === "summary") {
+              // Handle both new markdown format and legacy JSON format
+              let summaryContent = ""
+              if (response.response && response.response.raw) {
+                // New markdown format or legacy format with raw content
+                summaryContent = response.response.raw
+              } else if (response.response && response.response.parsed) {
+                // Alternative format
+                summaryContent = response.response.parsed
+              } else {
+                // Fallback for other formats
+                summaryContent = JSON.stringify(response.response || {})
               }
+
+              summariesData.push({
+                date: new Date(response.timestamp).toISOString().split("T")[0],
+                time: new Date(response.timestamp)
+                  .toISOString()
+                  .split("T")[1]
+                  .split(".")[0],
+                page_title: response.pageTitle || "Unknown",
+                page_url: response.pageUrl || "Unknown",
+                summary_focus:
+                  response.request.options?.focus ||
+                  response.request.focus ||
+                  "general",
+                summary_length:
+                  response.request.options?.length ||
+                  response.request.length ||
+                  "medium",
+                summary_content: summaryContent, // Full content for proper CSV export
+                model_used: response.metadata?.model || "unknown",
+                content_length: summaryContent.length,
+                language: response.request.languageInstruction
+                  ? "non-english"
+                  : "english",
+              })
             }
-          } catch (error) {
-            console.warn("Error processing response:", error)
           }
         }
 
         // Process token usage logs
         for (const key of tokenLogKeys) {
-          try {
-            const data = await GM.getValue(key, null)
-            if (data) {
-              const log = JSON.parse(data)
-              exportData.token_usage.push({
-                date: new Date(log.timestamp).toISOString().split("T")[0],
-                time: new Date(log.timestamp)
-                  .toISOString()
-                  .split("T")[1]
-                  .split(".")[0],
-                type: log.type || "unknown",
-                model: log.model || "unknown",
-                page_url: log.pageUrl || "unknown",
-                tokens_prompt: log.tokens?.prompt || 0,
-                tokens_completion: log.tokens?.completion || 0,
-                tokens_total: log.tokens?.total || 0,
-                cost_usd: log.cost || 0,
-              })
-            }
-          } catch (error) {
-            console.warn("Error processing token log:", error)
+          const data = await GM.getValue(key, null)
+          if (data) {
+            const log = JSON.parse(data)
+            tokenUsageData.push({
+              date: new Date(log.timestamp).toISOString().split("T")[0],
+              time: new Date(log.timestamp)
+                .toISOString()
+                .split("T")[1]
+                .split(".")[0],
+              type: log.type || "unknown",
+              model: log.model || "unknown",
+              page_url: log.pageUrl || "unknown",
+              tokens_prompt: log.tokens?.prompt || 0,
+              tokens_completion: log.tokens?.completion || 0,
+              tokens_total: log.tokens?.total || 0,
+              cost_usd: log.cost || 0,
+            })
           }
         }
 
-        // Sort data by date for better readability
-        exportData.questions_and_answers.sort(
+        // Sort all data by date
+        qaData.sort(
           (a, b) =>
             new Date(b.date + "T" + b.time) - new Date(a.date + "T" + a.time)
         )
-        exportData.summaries.sort(
+        summariesData.sort(
           (a, b) =>
             new Date(b.date + "T" + b.time) - new Date(a.date + "T" + a.time)
         )
-        exportData.token_usage.sort(
+        tokenUsageData.sort(
           (a, b) =>
             new Date(b.date + "T" + b.time) - new Date(a.date + "T" + a.time)
         )
 
-        // Helper function to escape CSV values
-        const escapeCSV = value => {
-          if (value === null || value === undefined) return ""
-          const str = String(value)
-          // Escape quotes and wrap in quotes if contains comma, quote, or newline
-          if (str.includes('"') || str.includes(",") || str.includes("\n")) {
-            return `"${str.replace(/"/g, '""')}"`
-          }
-          return str
-        }
+        // Generate clean combined CSV content without problematic metadata
+        // Combine Q&A and Summaries with unified column structure
+        const combinedData = []
 
-        // Helper function to convert array to CSV
-        const arrayToCSV = (data, headers) => {
-          if (data.length === 0) return headers.join(",") + "\n"
-
-          const csvRows = [
-            headers.join(","), // Header row
-            ...data.map(row =>
-              headers.map(header => escapeCSV(row[header])).join(",")
-            ),
-          ]
-          return csvRows.join("\n")
-        }
-
-        // Create individual CSV sections
-        const sections = []
-
-        // Metadata section
-        sections.push("=== EXPORT METADATA ===")
-        sections.push(`Export Date,${exportData.metadata.exportDate}`)
-        sections.push(`Script Version,${exportData.metadata.scriptVersion}`)
-        sections.push(
-          `Total Q&A Responses,${exportData.metadata.totalResponses}`
-        )
-        sections.push(`Total Token Logs,${exportData.metadata.totalTokenLogs}`)
-        sections.push(
-          `API Key Configured,${exportData.settings.apiKeyConfigured}`
-        )
-        sections.push(`Language Setting,${exportData.settings.language}`)
-        sections.push("") // Empty line
-
-        // Q&A section
-        if (exportData.questions_and_answers.length > 0) {
-          sections.push("=== QUESTIONS & ANSWERS ===")
-          const qaHeaders = [
-            "date",
-            "time",
-            "page_title",
-            "page_url",
-            "question",
-            "answer",
-            "model_used",
-            "question_length",
-            "language",
-          ]
-          sections.push(arrayToCSV(exportData.questions_and_answers, qaHeaders))
-          sections.push("") // Empty line
-        }
-
-        // Summaries section
-        if (exportData.summaries.length > 0) {
-          sections.push("=== AI SUMMARIES ===")
-          const summaryHeaders = [
-            "date",
-            "time",
-            "page_title",
-            "page_url",
-            "summary_focus",
-            "summary_length",
-            "content_preview",
-            "model_used",
-            "language",
-          ]
-          sections.push(arrayToCSV(exportData.summaries, summaryHeaders))
-          sections.push("") // Empty line
-        }
-
-        // Token usage section
-        if (exportData.token_usage.length > 0) {
-          sections.push("=== TOKEN USAGE LOGS ===")
-          const tokenHeaders = [
-            "date",
-            "time",
-            "type",
-            "model",
-            "page_url",
-            "tokens_prompt",
-            "tokens_completion",
-            "tokens_total",
-            "cost_usd",
-          ]
-          sections.push(arrayToCSV(exportData.token_usage, tokenHeaders))
-        }
-
-        // Join all sections
-        const csvContent = sections.join("\n")
-
-        // Create the export file as CSV
-        const dataBlob = new Blob([csvContent], {
-          type: "text/csv;charset=utf-8;",
+        // Add all Q&A data with compatible structure
+        qaData.forEach(qa => {
+          combinedData.push({
+            date: qa.date,
+            time: qa.time,
+            type: "Q&A",
+            page_title: qa.page_title,
+            page_url: qa.page_url,
+            focus_or_question: qa.question,
+            content_or_answer: qa.answer,
+            content_length: qa.answer ? qa.answer.length : 0,
+            model_used: qa.model_used,
+            language: qa.language,
+          })
         })
-        const url = URL.createObjectURL(dataBlob)
 
-        const link = document.createElement("a")
-        link.href = url
-        link.download = `radiology-tutor-export-${
-          new Date().toISOString().split("T")[0]
-        }.csv`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(url)
+        // Add all summary data with compatible structure
+        summariesData.forEach(summary => {
+          combinedData.push({
+            date: summary.date,
+            time: summary.time,
+            type: "Summary",
+            page_title: summary.page_title,
+            page_url: summary.page_url,
+            focus_or_question: `${summary.summary_focus} (${summary.summary_length})`,
+            content_or_answer: summary.summary_content,
+            content_length: summary.content_length,
+            model_used: summary.model_used,
+            language: summary.language,
+          })
+        })
 
-        alert(
-          `✅ Data exported successfully as CSV!\n\n📊 Export Summary:\n• ${exportData.questions_and_answers.length} Q&A entries\n• ${exportData.summaries.length} summaries\n• ${exportData.token_usage.length} API usage logs\n\n💡 Tip: Open the CSV file in Excel, Google Sheets, or any spreadsheet application. Data is organized in separate sections for easy analysis.`
+        // Sort combined data by date (most recent first)
+        combinedData.sort(
+          (a, b) =>
+            new Date(b.date + "T" + b.time) - new Date(a.date + "T" + a.time)
+        )
+
+        if (combinedData.length === 0) {
+          this.showBriefNotification(
+            "📭 No Q&A or Summary data found to export"
+          )
+          return
+        }
+
+        // Generate clean CSV with unified headers
+        const headers = [
+          "date",
+          "time",
+          "type",
+          "page_title",
+          "page_url",
+          "focus_or_question",
+          "content_or_answer",
+          "content_length",
+          "model_used",
+          "language",
+        ]
+
+        const csvContent = this.generateCSV(
+          combinedData,
+          headers,
+          "Combined Q&A and Summaries"
+        )
+
+        // Create filename with date and time
+        const now = new Date()
+        const dateStr = now.toISOString().split("T")[0]
+        const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "-")
+        const filename = `radiology-tutor-combined-export-${dateStr}-${timeStr}.csv`
+
+        this.downloadCSV(csvContent, filename)
+
+        this.showBriefNotification(
+          `✅ Combined export successful! (${qaData.length} Q&A + ${summariesData.length} summaries)`
         )
       } catch (error) {
-        console.error("📤 Error in exportAllData:", error)
+        console.error("📤 Error in exportCombinedData:", error)
         alert(`❌ Error exporting data: ${error.message}`)
       }
+    }
+
+    arrayToCSV(data, headers) {
+      if (data.length === 0) return headers.join(",") + "\n"
+
+      const csvRows = [
+        headers.join(","), // Header row
+        ...data.map(row =>
+          headers.map(header => this.escapeCSV(row[header])).join(",")
+        ),
+      ]
+      return csvRows.join("\n")
+    }
+
+    escapeCSV(value) {
+      if (value === null || value === undefined) return ""
+      const str = String(value)
+
+      // Enhanced escaping for markdown content (especially summaries)
+      // Handle quotes, commas, newlines, and markdown-specific characters
+      const needsEscaping =
+        str.includes('"') ||
+        str.includes(",") ||
+        str.includes("\n") ||
+        str.includes("\r") ||
+        str.length > 100
+
+      if (needsEscaping) {
+        // Clean up markdown formatting for CSV export
+        let cleanedStr = str
+          .replace(/\r\n/g, "\n") // Normalize line endings
+          .replace(/\r/g, "\n") // Convert remaining \r to \n
+          .replace(/"/g, '""') // Escape existing quotes
+
+        // Debug large content being escaped
+
+        // Wrap in quotes to preserve all formatting
+        return `"${cleanedStr}"`
+      }
+      return str
+    }
+
+    async exportAllData() {
+      // Use the new combined export method
+      await this.exportCombinedData()
     }
 
     async purgeDataKeepKey() {
@@ -4647,19 +5633,34 @@ ANSWER:`
         )
       ) {
         try {
-          // Clear all data except API key
-          const allKeys = await this.dataManager.getAllKeys()
+          // Get ALL GM storage keys, not just legacy ones
+          const allKeys = await GM.listValues()
+          console.log("🗑️ All keys found:", allKeys)
+
+          // Clear everything EXCEPT the API key
+          let deletedCount = 0
           for (const key of allKeys) {
-            const cleanKey = key.replace("ra_tutor_", "")
-            if (cleanKey !== "mistral_api_key") {
-              await this.dataManager.deleteData(cleanKey)
+            if (key !== "mistral_api_key") {
+              await GM.deleteValue(key)
+              deletedCount++
+              console.log(`🗑️ Deleted key: ${key}`)
+            } else {
+              console.log(`🔒 Preserved API key: ${key}`)
             }
           }
 
-          console.log("🔒 GDPR: Progress data purged, API key preserved")
-          alert("✅ Progress data cleared. API key preserved.")
-          this.switchTab(this.currentTab)
-          this.updateSettingsContent()
+          console.log(
+            `🔒 GDPR: ${deletedCount} data keys purged, API key preserved`
+          )
+          alert(
+            `✅ Progress data cleared (${deletedCount} items). API key preserved.`
+          )
+
+          // Close modal and allow user to reopen if needed
+          const modal = document.querySelector(".settings-modal-overlay")
+          if (modal) {
+            modal.remove()
+          }
         } catch (error) {
           console.error("🗑️ Error in purgeDataKeepKey:", error)
           alert(`❌ Error purging data: ${error.message}`)
@@ -4690,9 +5691,28 @@ ANSWER:`
 
       try {
         console.log("💥 Proceeding with nuclear option...")
-        await this.clearAllData()
-        this.updateSettingsContent()
-        alert("💥 Everything has been permanently deleted.")
+
+        // Get ALL GM storage keys and delete everything
+        const allKeys = await GM.listValues()
+        console.log("💥 All keys found:", allKeys)
+
+        let deletedCount = 0
+        for (const key of allKeys) {
+          await GM.deleteValue(key)
+          deletedCount++
+          console.log(`💥 Deleted key: ${key}`)
+        }
+
+        console.log(`💥 TOTAL DESTRUCTION: ${deletedCount} keys deleted`)
+
+        // Close modal and show completion message
+        const modal = document.querySelector(".settings-modal-overlay")
+        if (modal) {
+          modal.remove()
+        }
+        alert(
+          `💥 Everything has been permanently deleted (${deletedCount} items).`
+        )
       } catch (error) {
         console.error("💥 Error in purgeAllData:", error)
         alert(`❌ Error purging all data: ${error.message}`)
@@ -4770,6 +5790,7 @@ ANSWER:`
 
         if (responses.length > 0) {
           const latest = responses[0] // Already sorted by timestamp, most recent first
+
           return {
             content: latest.response.parsed || latest.response.raw,
             timestamp: latest.timestamp,
@@ -5179,7 +6200,7 @@ ANSWER:`
     }
 
     async updateSettingsContent() {
-      // Update API key status only
+      // Update API key status only (legacy method for non-modal usage)
       const apiKeyStatus = document.getElementById("api-key-status")
       if (apiKeyStatus) {
         const hasKey = this.aiTutor.hasApiKey()
@@ -5211,6 +6232,492 @@ ANSWER:`
         const savedLanguage = await this.getLanguagePreference()
         languageSelect.value = savedLanguage
       }
+
+      // Length preference is now handled by modal interface, no dropdown to update
+    }
+
+    // Helper methods for modal status updates
+    updateApiKeyStatus(elementId) {
+      const apiKeyStatus = document.getElementById(elementId)
+      if (apiKeyStatus) {
+        const hasKey = this.aiTutor.hasApiKey()
+        apiKeyStatus.innerHTML = hasKey
+          ? `✅ Configured: ${this.aiTutor.apiKey.substring(0, 8)}...****`
+          : "❌ Not configured"
+      }
+    }
+
+    async updatePricingStatus(elementId) {
+      const pricingStatus = document.getElementById(elementId)
+      if (pricingStatus) {
+        try {
+          const allPricing = await this.aiTutor.getAllPricing()
+          const customCount = Object.keys(allPricing.custom).length
+          const totalCount = Object.keys(allPricing.effective).length
+
+          pricingStatus.innerHTML =
+            customCount > 0
+              ? `✅ ${customCount}/${totalCount} models have custom pricing`
+              : `📋 Using default pricing for all ${totalCount} models`
+        } catch (error) {
+          pricingStatus.innerHTML = "❌ Error loading pricing status"
+        }
+      }
+    }
+
+    // Pricing management utility methods
+    async resetPricingToDefaults() {
+      // Reset all custom pricing to defaults
+      try {
+        await this.aiTutor.resetAllPricingToDefaults()
+        localStorage.setItem(
+          "raTutor_lastPricingUpdate",
+          new Date().toLocaleString()
+        )
+      } catch (error) {
+        throw new Error("Failed to reset pricing: " + error.message)
+      }
+    }
+
+    async fetchLatestPricingFromMistral() {
+      // Fetch latest pricing from Mistral API
+      try {
+        await this.aiTutor.fetchLatestPricing()
+        localStorage.setItem(
+          "raTutor_lastPricingUpdate",
+          new Date().toLocaleString()
+        )
+      } catch (error) {
+        throw new Error("Failed to fetch latest pricing: " + error.message)
+      }
+    }
+
+    getPricingConfiguration() {
+      // Get current pricing configuration status
+      try {
+        const customPricing = localStorage.getItem("raTutor_customPricing")
+        return customPricing ? JSON.parse(customPricing) : null
+      } catch (error) {
+        return null
+      }
+    }
+
+    getLastPricingUpdate() {
+      // Get timestamp of last pricing update
+      return localStorage.getItem("raTutor_lastPricingUpdate")
+    }
+
+    async loadActualPricingDetails() {
+      // Load and display actual pricing details
+      const container = document.getElementById("pricing-details-list")
+      if (!container) return
+
+      try {
+        const allPricing = await this.aiTutor.getAllPricing()
+        const models = Object.keys(allPricing.effective)
+
+        container.innerHTML = models
+          .map(model => {
+            const pricing = allPricing.effective[model]
+            const isCustom = allPricing.custom[model] !== undefined
+
+            return `
+            <div style="padding: 12px; background: rgba(42, 42, 42, 0.8); border-radius: 6px; border: 1px solid ${
+              isCustom ? "#ff9800" : "#424242"
+            };">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-weight: 500; color: #e8eaed;">${model}</div>
+                ${
+                  isCustom
+                    ? '<div style="background: #ff9800; color: #000; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 500;">CUSTOM</div>'
+                    : ""
+                }
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; color: #b0bec5;">
+                <div>Input: $${pricing.input}/1K tokens</div>
+                <div>Output: $${pricing.output}/1K tokens</div>
+              </div>
+            </div>
+          `
+          })
+          .join("")
+      } catch (error) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 40px;">
+            <div style="color: #f44336; font-size: 24px; margin-bottom: 12px;">❌</div>
+            <div style="color: #b0bec5;">Failed to load pricing details</div>
+            <div style="color: #888; font-size: 12px; margin-top: 8px;">${error.message}</div>
+          </div>
+        `
+      }
+    }
+
+    openPricingManualEditor(modal) {
+      // Open manual pricing editor interface
+      const content = modal.querySelector("#pricing-management-content")
+      if (content) {
+        content.innerHTML = `
+          <div style="margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; margin-bottom: 16px;">
+              <button data-action="back-to-pricing" style="background: none; border: none; color: #7198f8; cursor: pointer; padding: 4px 8px; margin-right: 12px;">
+                ← Back
+              </button>
+              <h3 style="margin: 0; color: #e8eaed;">Manual Pricing Editor</h3>
+            </div>
+            
+            <div style="padding: 12px; background: rgba(255, 152, 0, 0.1); border-radius: 6px; border: 1px solid #ff9800; margin-bottom: 20px;">
+              <div style="font-size: 12px; color: #e8eaed; line-height: 1.5;">
+                <strong>⚠️ Advanced Feature:</strong> Edit individual model pricing. Use with caution as incorrect values may affect cost calculations.
+              </div>
+            </div>
+            
+            <div id="pricing-editor-list" style="display: grid; gap: 12px;">
+              <div style="text-align: center; padding: 40px;">
+                <div style="color: #7198f8; font-size: 24px; margin-bottom: 12px;">⏳</div>
+                <div style="color: #b0bec5;">Loading pricing editor...</div>
+              </div>
+            </div>
+          </div>
+        `
+
+        // Load pricing editor interface
+        setTimeout(() => {
+          this.loadPricingEditor()
+        }, 100)
+      }
+    }
+
+    async loadPricingEditor() {
+      // Load and display pricing editor interface
+      const container = document.getElementById("pricing-editor-list")
+      if (!container) return
+
+      try {
+        const allPricing = await this.aiTutor.getAllPricing()
+        const models = Object.keys(allPricing.effective)
+
+        container.innerHTML = models
+          .map(model => {
+            const pricing = allPricing.effective[model]
+            const isCustom = allPricing.custom[model] !== undefined
+
+            return `
+            <div style="padding: 16px; background: rgba(42, 42, 42, 0.8); border-radius: 6px; border: 1px solid ${
+              isCustom ? "#ff9800" : "#424242"
+            };">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="font-weight: 500; color: #e8eaed;">${model}</div>
+                ${
+                  isCustom
+                    ? '<div style="background: #ff9800; color: #000; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 500;">CUSTOM</div>'
+                    : ""
+                }
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: center;">
+                <div>
+                  <label style="display: block; font-size: 11px; color: #b0bec5; margin-bottom: 4px;">Input ($/1K tokens)</label>
+                  <input type="number" 
+                         value="${pricing.input}" 
+                         step="0.000001" 
+                         style="width: 100%; padding: 6px; background: #1a1a1a; border: 1px solid #424242; border-radius: 4px; color: #e8eaed; font-size: 12px;"
+                         data-model="${model}" 
+                         data-type="input">
+                </div>
+                <div>
+                  <label style="display: block; font-size: 11px; color: #b0bec5; margin-bottom: 4px;">Output ($/1K tokens)</label>
+                  <input type="number" 
+                         value="${pricing.output}" 
+                         step="0.000001" 
+                         style="width: 100%; padding: 6px; background: #1a1a1a; border: 1px solid #424242; border-radius: 4px; color: #e8eaed; font-size: 12px;"
+                         data-model="${model}" 
+                         data-type="output">
+                </div>
+                <div style="display: flex; gap: 6px;">
+                  <button onclick="raTutor.ui.savePricingEdit('${model}')" 
+                          style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; flex: 1;">
+                    Save
+                  </button>
+                  ${
+                    isCustom
+                      ? `<button onclick="raTutor.ui.resetModelPricing('${model}')" 
+                          style="padding: 6px 12px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; flex: 1;">
+                    Reset
+                  </button>`
+                      : ""
+                  }
+                </div>
+              </div>
+            </div>
+          `
+          })
+          .join("")
+      } catch (error) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 40px;">
+            <div style="color: #f44336; font-size: 24px; margin-bottom: 12px;">❌</div>
+            <div style="color: #b0bec5;">Failed to load pricing editor</div>
+            <div style="color: #888; font-size: 12px; margin-top: 8px;">${error.message}</div>
+          </div>
+        `
+      }
+    }
+
+    async savePricingEdit(model) {
+      // Save individual model pricing edit
+      const inputField = document.querySelector(
+        `input[data-model="${model}"][data-type="input"]`
+      )
+      const outputField = document.querySelector(
+        `input[data-model="${model}"][data-type="output"]`
+      )
+
+      if (inputField && outputField) {
+        try {
+          const inputPrice = parseFloat(inputField.value)
+          const outputPrice = parseFloat(outputField.value)
+
+          if (
+            isNaN(inputPrice) ||
+            isNaN(outputPrice) ||
+            inputPrice < 0 ||
+            outputPrice < 0
+          ) {
+            this.showBriefNotification("❌ Invalid pricing values")
+            return
+          }
+
+          await this.aiTutor.setCustomPricing(model, {
+            input: inputPrice,
+            output: outputPrice,
+          })
+          this.showBriefNotification(`✅ ${model} pricing updated`)
+
+          // Refresh the editor to show updated status
+          setTimeout(() => this.loadPricingEditor(), 100)
+        } catch (error) {
+          this.showBriefNotification(
+            "❌ Failed to save pricing: " + error.message
+          )
+        }
+      }
+    }
+
+    async resetModelPricing(model) {
+      // Reset individual model pricing to default
+      if (confirm(`Reset ${model} to default pricing?`)) {
+        try {
+          await this.aiTutor.resetModelPricing(model)
+          this.showBriefNotification(`✅ ${model} reset to defaults`)
+
+          // Refresh the editor to show updated status
+          setTimeout(() => this.loadPricingEditor(), 100)
+        } catch (error) {
+          this.showBriefNotification(
+            "❌ Failed to reset pricing: " + error.message
+          )
+        }
+      }
+    }
+
+    // Update the length display in the summary interface
+    async updateLengthDisplay(container) {
+      const lengthDisplay = container.querySelector("#length-display")
+      if (lengthDisplay) {
+        const currentLength = await this.getLengthPreference()
+        const lengthLabels = {
+          short: "Short",
+          medium: "Medium",
+          long: "Long",
+        }
+        lengthDisplay.textContent = lengthLabels[currentLength] || "Medium"
+      }
+    }
+
+    // Show modal for changing length preference
+    showLengthPreferenceModal() {
+      const overlay = document.createElement("div")
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 10001;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      `
+
+      const modal = document.createElement("div")
+      modal.style.cssText = `
+        background: linear-gradient(145deg, #123262, #1a3a6b);
+        padding: 25px;
+        border-radius: 12px;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        border: 1px solid #2c4a7c;
+        color: #e8eaed;
+      `
+
+      modal.innerHTML = `
+        <h3 style="margin-top: 0; color: #7198f8; display: flex; align-items: center; gap: 8px;">
+          📏 Summary Length Preference
+        </h3>
+        <p style="color: #b0bec5; line-height: 1.5; margin-bottom: 20px;">
+          Choose your preferred summary length. This setting will be used for all new summaries and when regenerating existing ones.
+        </p>
+        
+        <div style="margin: 20px 0;">
+          <div style="margin-bottom: 12px;">
+            <label style="display: flex; align-items: center; padding: 10px; background: #0f2142; border-radius: 6px; cursor: pointer; border: 2px solid transparent;" data-length="short">
+              <input type="radio" name="length" value="short" style="margin-right: 10px;">
+              <div>
+                <div style="font-weight: bold; color: #7198f8;">📝 Short</div>
+                <div style="font-size: 12px; color: #95a5a6;">Concise bullet points - Quick overview</div>
+              </div>
+            </label>
+          </div>
+          
+          <div style="margin-bottom: 12px;">
+            <label style="display: flex; align-items: center; padding: 10px; background: #0f2142; border-radius: 6px; cursor: pointer; border: 2px solid transparent;" data-length="medium">
+              <input type="radio" name="length" value="medium" style="margin-right: 10px;">
+              <div>
+                <div style="font-weight: bold; color: #7198f8;">📄 Medium</div>
+                <div style="font-size: 12px; color: #95a5a6;">Detailed 5-7 points - Balanced learning</div>
+              </div>
+            </label>
+          </div>
+          
+          <div style="margin-bottom: 12px;">
+            <label style="display: flex; align-items: center; padding: 10px; background: #0f2142; border-radius: 6px; cursor: pointer; border: 2px solid transparent;" data-length="long">
+              <input type="radio" name="length" value="long" style="margin-right: 10px;">
+              <div>
+                <div style="font-weight: bold; color: #7198f8;">📚 Long</div>
+                <div style="font-size: 12px; color: #95a5a6;">Comprehensive explanations - Deep dive</div>
+              </div>
+            </label>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-top: 25px;">
+          <button id="save-length-pref" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #7198f8, #5a84f0); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">
+            💾 Save Preference
+          </button>
+          <button id="cancel-length-modal" style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            Cancel
+          </button>
+        </div>
+      `
+
+      // Add the modal to the page
+      overlay.appendChild(modal)
+      document.body.appendChild(overlay)
+
+      // Load current preference and set radio button
+      this.getLengthPreference().then(currentLength => {
+        const radio = modal.querySelector(`input[value="${currentLength}"]`)
+        if (radio) {
+          radio.checked = true
+          radio.closest("label").style.border = "2px solid #7198f8"
+        }
+      })
+
+      // Add event listeners for radio buttons
+      const radioLabels = modal.querySelectorAll("label[data-length]")
+      radioLabels.forEach(label => {
+        label.addEventListener("click", () => {
+          // Remove highlight from all labels
+          radioLabels.forEach(l => (l.style.border = "2px solid transparent"))
+          // Highlight selected label
+          label.style.border = "2px solid #7198f8"
+        })
+      })
+
+      // Save button functionality
+      modal
+        .querySelector("#save-length-pref")
+        .addEventListener("click", async () => {
+          const selectedRadio = modal.querySelector(
+            'input[name="length"]:checked'
+          )
+          if (selectedRadio) {
+            await this.saveLengthPreference(selectedRadio.value)
+
+            // Update all length displays on the page
+            const allLengthDisplays =
+              document.querySelectorAll("#length-display")
+            const lengthLabels = {
+              short: "Short",
+              medium: "Medium",
+              long: "Long",
+            }
+            allLengthDisplays.forEach(display => {
+              display.textContent =
+                lengthLabels[selectedRadio.value] || "Medium"
+            })
+
+            // Close modal
+            document.body.removeChild(overlay)
+
+            // Show brief success feedback
+            this.showBriefNotification(
+              `📏 Length preference saved: ${lengthLabels[selectedRadio.value]}`
+            )
+          }
+        })
+
+      // Cancel button functionality
+      modal
+        .querySelector("#cancel-length-modal")
+        .addEventListener("click", () => {
+          document.body.removeChild(overlay)
+        })
+
+      // Close on overlay click
+      overlay.addEventListener("click", e => {
+        if (e.target === overlay) {
+          document.body.removeChild(overlay)
+        }
+      })
+    }
+
+    // Show brief notification
+    showBriefNotification(message) {
+      const notification = document.createElement("div")
+      notification.style.cssText = `
+        position: fixed;
+        top: 50px;
+        right: 20px;
+        background: linear-gradient(135deg, #28a745, #20c997);
+        color: white;
+        padding: 12px 16px;
+        border-radius: 6px;
+        z-index: 10002;
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        font-size: 13px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        transform: translateX(100%);
+      `
+      notification.textContent = message
+      document.body.appendChild(notification)
+
+      // Animate in
+      setTimeout(() => {
+        notification.style.transform = "translateX(0)"
+      }, 50)
+
+      // Auto remove after 3 seconds
+      setTimeout(() => {
+        notification.style.transform = "translateX(100%)"
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            document.body.removeChild(notification)
+          }
+        }, 300)
+      }, 3000)
     }
   }
 

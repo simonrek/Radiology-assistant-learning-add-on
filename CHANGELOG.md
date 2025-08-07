@@ -4,6 +4,45 @@ All notable changes to the **Radiology Assistant Personal Tutor** will be docume
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-08-07 - Major Storage & UX Overhaul 🚀
+
+### 🎉 Added
+- **Complete Data Export System Redesign**
+  - Four distinct export types: Q&A Data, AI Summaries, Combined Data, and Metadata Overview
+  - Enhanced CSV escaping for complex markdown content with proper column separation
+  - Date-time stamped export filenames for better organization
+  - Unified export structure removing problematic metadata mixing
+
+- **Enhanced Content Formatting System**
+  - Advanced markdown-to-HTML conversion with nested list support
+  - Improved summary display with proper formatting instead of raw markdown
+  - Enhanced cache compatibility system handling both old and new data formats
+  - Smart content type detection prioritizing markdown over HTML tags
+
+- **Overhauled User Interface**
+  - Completely redesigned settings panel with modern layout and improved organization
+  - New summary length control UI (Short, Medium, Long) for customizable summary generation
+  - Enhanced button design and styling for better visual appeal and usability
+  - Improved modal layouts and user interaction flows
+
+- **Production-Ready Code Quality**
+  - Comprehensive debugging log cleanup while preserving essential error handling
+  - Simple AI API call logging for production monitoring
+  - Clean console output for better user experience
+
+### 🔧 Changed
+- **Storage System Enhancement**: Improved unified AI response storage with better backward compatibility
+- **Summary Generation**: Enhanced caching system with proper content formatting and display
+- **Settings Panel**: Complete redesign with modern UI, improved organization, and better user experience
+- **Button Interface**: Enhanced styling and layout for all buttons throughout the application
+
+### 🐛 Fixed
+- **Critical Parsing Bug**: Resolved "[object Object]" display issue when reloading pages with cached summaries
+- **CSV Export Issues**: Fixed all exports displaying content in single column instead of proper separation
+- **Content Formatting**: Fixed summary display showing raw markdown instead of properly formatted HTML
+- **Cache Retrieval**: Enhanced backward compatibility with legacy data formats
+- **Regenerate Button**: Restored functionality using current user preferences
+
 ## [0.1.1] - 2025-08-04 - API error logging improvement and API initial setup made more user friendly🚀
 
 ### 🐛 Fixed
