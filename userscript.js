@@ -3,8 +3,8 @@
 // ==UserScript==
 // @name         Radiology Assistant Personal Tutor
 // @namespace    https://github.com/simonrek/Radiology-assistant-learning-add-on
-// @version      0.3.0
-// @description  Latest update: 7.8.2025 ABOUT: GDPR-conscious AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress and maximize learning efficiency with Mistral AI.
+// @version      0.3.1
+// @description  Latest update: 1.9.2025 ABOUT: GDPR-conscious AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress and maximize learning efficiency with Mistral AI.
 // @author       Simon Rekanovic
 // @homepage     https://github.com/simonrek/Radiology-assistant-learning-add-on
 // @supportURL   https://github.com/simonrek/Radiology-assistant-learning-add-on/issues
@@ -19,10 +19,20 @@
 // @grant        GM.listValues
 // @grant        GM.addStyle
 // @grant        GM.xmlHttpRequest
+// @require      https://cdn.jsdelivr.net/npm/marked/marked.min.js
+// @require      https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js
 // @connect      api.mistral.ai
 // @run-at       document-end
 // @license      MIT
 // ==/UserScript==
+
+// Libraries are now loaded via @require directives
+console.log("✅ Libraries loaded:", {
+  marked: typeof marked,
+  markedParse: typeof marked?.parse,
+  DOMPurify: typeof DOMPurify,
+  DOMPurifySanitize: typeof DOMPurify?.sanitize
+});
 
 // ========================================
 // 🔧 CROSS-PLATFORM USERSCRIPT ENGINE
@@ -519,39 +529,13 @@
     }
 
     extractPageContent() {
-      // Extract main content from the page
-      const contentSelectors = [
-        "article",
-        ".content",
-        "#content",
-        "main",
-        ".article-content",
-        ".post-content",
-      ]
-
-      let content = ""
-      for (const selector of contentSelectors) {
-        const element = document.querySelector(selector)
-        if (element) {
-          content = element.innerText
-          break
-        }
-      }
-
-      // Fallback to body content if no specific container found
-      if (!content) {
-        const bodyClone = document.body.cloneNode(true)
-        // Remove script and style tags
-        bodyClone
-          .querySelectorAll("script, style, nav, header, footer")
-          .forEach(el => el.remove())
-        content = bodyClone.innerText
-      }
-
-      // Clean and limit content
-      content = content.replace(/\s+/g, " ").trim()
-      // console.log('🔒 Extracted page content:', content)
-      return content.substring(0) // Limit for API calls
+      // Clean, fast: clone the whole document, strip all non-content elements, return only main text
+      const clone = document.cloneNode(true);
+      clone.querySelectorAll(
+        'script, style, noscript, iframe, header, nav, footer, aside, .sidebar, #sidebar, #ra-tutor-panel, .cookie, .cookie-banner, .cookie-consent, .cc-window, .eu-cookie-compliance, #cookie, #cookie-banner, #cookie-consent, #cookie-policy'
+      ).forEach(el => el.remove());
+      let text = clone.body ? clone.body.textContent : clone.textContent;
+      return text.replace(/\s+/g, ' ').trim();
     }
 
     async generateSummary(content, options = {}, forceBypassCache = false) {
@@ -594,34 +578,8 @@
           })
 
           // Return the cached response in the expected format
-          // Fix: Handle cases where parsed content is missing but raw exists
-          let parsedContent = matchingCached.response.parsed
-
-          // If parsed is empty, null, undefined, an object (old format), or has zero length, but raw exists, format the raw content
-          if (
-            (!parsedContent ||
-              parsedContent === null ||
-              parsedContent === undefined ||
-              typeof parsedContent === "object" || // Handle old object format
-              (typeof parsedContent === "string" &&
-                parsedContent.length === 0)) &&
-            matchingCached.response.raw
-          ) {
-            // Check if raw content is HTML or markdown - with detailed debugging
-            const rawContent = matchingCached.response.raw
-            const hasHTMLTags = rawContent.includes("<")
-            const startsWithMarkdown =
-              rawContent.startsWith("#") || rawContent.startsWith("##")
-            const containsMarkdownHeaders = /^#{1,6}\s/.test(rawContent)
-
-            // Prioritize markdown detection over HTML tag detection
-            const isMarkdown = startsWithMarkdown || containsMarkdownHeaders
-            const shouldFormat = !hasHTMLTags || isMarkdown
-
-            parsedContent = shouldFormat
-              ? this.formatMarkdownToHTML(rawContent)
-              : rawContent
-          }
+          // Use unified formatting - always format raw markdown content
+          const parsedContent = this.formatMarkdownToHTML(matchingCached.response.raw)
 
           const summaryWithMetadata = {
             raw: matchingCached.response.raw,
@@ -719,20 +677,20 @@
 
     buildSummaryPrompt(content, length, focus, languageInstruction = "") {
       const lengthInstructions = {
-        short: "Provide a concise bullet point summary (3-4 key points)",
-        medium: "Provide a medium detailed summary with 5-7 bullet points",
-        long: "Provide a detailed summary with 8-10 bullet points including explanations and emphasis on key concepts",
+        short: "Return only the most essential, high-yield points in 3-4 concise bullet points. Avoid extra detail.",
+        medium: "Return a brief, high-yield summary in 5-6 bullet points. Focus on essentials, avoid lengthy explanations.",
+        long: "Return a compact, high-yield overview in 7-8 bullet points. Only include what is most important for quick review.",
       }
 
       const focusInstructions = {
         key_learning_points:
-          "Focus on the most important learning points and key concepts that residents should understand",
+          "Focus only on the most important learning points and key concepts. Omit less relevant details.",
         clinical_overview:
-          "Provide a clinical recap focusing on practical diagnostic and management aspects",
+          "Give a practical, high-yield clinical recap. Only include actionable diagnostic and management points.",
         imaging_pearls:
-          "Focus specifically on key imaging findings, techniques, diagnostic pearls, and what radiologists should look for",
+          "List the most important imaging findings and diagnostic pearls. Omit technical or background details.",
         imaging_differential:
-          "Focus on imaging-based differential diagnoses, key distinguishing features, and diagnostic decision-making in radiology",
+          "List only the most important imaging-based differential diagnoses and distinguishing features. Be concise.",
       }
 
       // Create dynamic instructions based on focus type
@@ -740,56 +698,35 @@
 
       switch (focus) {
         case "imaging_pearls":
-          specificInstructions = `
-          - Emphasize imaging modalities, protocols, and technical considerations
-          - Highlight specific imaging findings and their significance
-          - Include tips for image interpretation and common pitfalls
-          - Focus on what makes imaging findings distinctive or pathognomonic`
+          specificInstructions = `\n- Only include the most critical imaging findings and pearls. No background or technical details.`
           break
-
         case "imaging_differential":
-          specificInstructions = `
-          - Focus on differential diagnoses based on imaging appearance
-          - Explain key distinguishing imaging features between conditions
-          - Include decision trees or diagnostic algorithms when applicable
-          - Emphasize imaging characteristics that help narrow the differential`
+          specificInstructions = `\n- Only include the most important differentials and distinguishing features. No algorithms or long explanations.`
           break
-
         case "clinical_overview":
-          specificInstructions = `
-          - Provide a practical, resident-focused clinical summary
-          - Include both diagnostic and management considerations
-          - Keep it concise but comprehensive for quick review
-          - Focus on actionable clinical information`
+          specificInstructions = `\n- Only include actionable, high-yield clinical points. No background or comprehensive review.`
           break
-
         default:
-          specificInstructions = `
-          - Include specific imaging findings, anatomical details, and clinical correlations when present
-          - Highlight differential diagnoses and key distinguishing features
-          - Balance theoretical knowledge with practical application`
+          specificInstructions = `\n- Only include the most important facts and learning points. Omit all but the essentials.`
       }
 
-      return `You are a senior radiology educator creating a ${focus.replace(
+      return `You are a senior radiology educator creating a high-yield, concise ${focus.replace(
         /_/g,
         " "
       )} summary for radiology residents.
 
-      CONTENT: "${content.substring(0)}"
-          
-      INSTRUCTIONS:
-      - ${lengthInstructions[length]}
-      - ${focusInstructions[focus] || focusInstructions.key_learning_points}
-      - Use clear and supportive educational language appropriate for medical learners${specificInstructions}
-      - Structure with clear hierarchy: section headers, main topics with overview text, then specific bullet points
-      - Use ## for section headers (e.g., ## Common Liver Tumors)
-      - Use **topic names** with descriptive text for main topics (e.g., **Hemangioma**: A benign vascular lesion...)
-      - Use - for bullet points with specific learning content
-      - Use **bold** for key terms, characteristics, and important concepts within bullets
-      - Keep logical grouping and proper educational flow
-      - Focus on practical learning points residents need to know${languageInstruction}
+CONTENT: "${content.substring(0)}"
 
-      SUMMARY:`
+INSTRUCTIONS:
+- ${lengthInstructions[length]}
+- ${focusInstructions[focus] || focusInstructions.key_learning_points}
+- Use clear, supportive, and concise educational language. ${specificInstructions}
+- Structure with clear hierarchy: section headers (##), main topics (**bold**), and bullet points (-).
+- Use only markdown formatting (##, **, -). Do NOT use HTML or CSS.
+- Do not include any explanations about formatting or markdown itself.
+- Focus on practical learning points residents need to know.${languageInstruction}
+
+SUMMARY:`
     }
 
     parseSummaryResponse(content) {
@@ -934,135 +871,195 @@
       return Math.abs(hash).toString(36)
     }
 
-    // Format markdown text for HTML display
-    formatMarkdownToHTML(text) {
-      if (!text || typeof text !== "string") {
-        console.warn(
-          "⚠️ formatMarkdownToHTML received invalid input:",
-          typeof text
-        )
-        return text || ""
+    // ========================================
+    // MARKDOWN PROCESSING
+    // ========================================
+
+    /**
+     * Parse and sanitize Markdown content using marked + DOMPurify
+     * @param {string} content - Raw Markdown content
+     * @returns {string} Sanitized HTML with explicit styling
+     */
+    formatMarkdownToHTML(content) {
+      if (!content || typeof content !== 'string') {
+        return content || '';
       }
 
-      let formatted = text
-        // First, handle code blocks (triple backticks)
-        .replace(
-          /```([\s\S]*?)```/g,
-          '<div style="background: #1a3a6b; padding: 8px; border-radius: 4px; margin: 6px 0; font-family: monospace; font-size: 11px; border-left: 3px solid #7198f8; overflow-x: auto;"><code>$1</code></div>'
-        )
+      console.log("🔍 formatMarkdownToHTML called with:", {
+        contentPreview: content.substring(0, 100) + "...",
+        markedAvailable: typeof marked,
+        DOMPurifyAvailable: typeof DOMPurify
+      });
 
-        // Handle inline code (single backticks)
-        .replace(
-          /`([^`]+)`/g,
-          '<code style="background: #1a3a6b; padding: 1px 4px; border-radius: 3px; font-family: monospace; font-size: 10px;">$1</code>'
-        )
+      try {
+        // Check if required libraries are available
+        if (typeof marked === 'undefined') {
+          console.warn('🔄 marked library not available, using basic formatting');
+          return this.basicMarkdownFormat(content);
+        }
 
-        // Handle headers with proper hierarchy (process longer patterns first!)
-        // H4 (####) - smallest, dark blue
-        .replace(
-          /^####\s+(.*$)/gm,
-          '<div style="margin: 8px 0 3px 0; font-size: 12px; font-weight: bold; color: #7198f8;">$1</div>'
-        )
+        if (typeof DOMPurify === 'undefined') {
+          console.warn('🔄 DOMPurify library not available, skipping sanitization');
+          const html = marked.parse(content);
+          console.log("✅ Marked parsed HTML (no DOMPurify):", html.substring(0, 200) + "...");
+          return this.addExplicitStyling(html);
+        }
 
-        // H3 (###) - medium, dark blue
-        .replace(
-          /^###\s+(.*$)/gm,
-          '<div style="margin: 10px 0 4px 0; font-size: 13px; font-weight: bold; color: #7198f8; border-bottom: 1px solid #7198f8; padding-bottom: 2px;">$1</div>'
-        )
+        // Parse Markdown to HTML using marked library
+        const html = marked.parse(content);
+        console.log("✅ Marked parsed HTML:", html.substring(0, 200) + "...");
 
-        // H2 (##) - large, dark blue
-        .replace(
-          /^##\s+(.*$)/gm,
-          '<div style="margin: 12px 0 6px 0; font-size: 15px; font-weight: bold; color: #7198f8; border-bottom: 2px solid #7198f8; padding-bottom: 4px;">$1</div>'
-        )
+        // Sanitize HTML using DOMPurify
+        const sanitized = DOMPurify.sanitize(html, {
+          ALLOWED_TAGS: [
+            'p',
+            'br',
+            'strong',
+            'em',
+            'u',
+            'ol',
+            'ul',
+            'li',
+            'h1',
+            'h2',
+            'h3',
+            'h4',
+            'h5',
+            'h6',
+            'blockquote',
+            'code',
+            'pre',
+            'a', // Allow links
+            'hr', // Allow horizontal rules
+            'table',
+            'thead',
+            'tbody',
+            'tr',
+            'th',
+            'td'
+          ],
+          ALLOWED_ATTR: [
+            'href', // Allow href attributes for links
+            'target', // Allow target attributes for links
+            'rel', // Allow rel attributes for links
+            'style', // Allow style attributes for explicit styling
+            'class' // Allow class attributes
+          ],
+        });
+        
+        console.log("✅ DOMPurify sanitized HTML:", sanitized.substring(0, 200) + "...");
+        return this.addExplicitStyling(sanitized);
+      } catch (error) {
+        console.error('🔄 Markdown parsing failed:', error);
+        return this.basicMarkdownFormat(content); // Return safely formatted content if parsing fails
+      }
+    }
 
-        // H1 (#) - largest, dark blue
-        .replace(
-          /^#\s+(.*$)/gm,
-          '<div style="margin: 14px 0 8px 0; font-size: 16px; font-weight: bold; color: #7198f8; border-bottom: 2px solid #7198f8; padding-bottom: 4px;">$1</div>'
-        )
+    /**
+     * Add explicit CSS styling to HTML elements to override any CSS resets
+     * @param {string} html - HTML content
+     * @returns {string} HTML with explicit styling
+     */
+    addExplicitStyling(html) {
+      return html
+        // Headers with explicit styling
+        .replace(/<h1>/g, '<h1 style="font-size: 18px; font-weight: bold; margin: 16px 0 12px 0; color: #e8eaed; line-height: 1.3;">')
+        .replace(/<h2>/g, '<h2 style="font-size: 16px; font-weight: bold; margin: 14px 0 10px 0; color: #e8eaed; line-height: 1.3;">')
+        .replace(/<h3>/g, '<h3 style="font-size: 14px; font-weight: bold; margin: 12px 0 8px 0; color: #e8eaed; line-height: 1.3;">')
+        .replace(/<h4>/g, '<h4 style="font-size: 13px; font-weight: bold; margin: 10px 0 6px 0; color: #e8eaed; line-height: 1.3;">')
+        .replace(/<h5>/g, '<h5 style="font-size: 12px; font-weight: bold; margin: 8px 0 4px 0; color: #e8eaed; line-height: 1.3;">')
+        .replace(/<h6>/g, '<h6 style="font-size: 11px; font-weight: bold; margin: 6px 0 4px 0; color: #e8eaed; line-height: 1.3;">')
+        // Paragraphs
+        .replace(/<p>/g, '<p style="margin: 8px 0; line-height: 1.5; color: #e8eaed;">')
+        // Strong/Bold
+        .replace(/<strong>/g, '<strong style="font-weight: bold; color: #ffffff;">')
+        // Emphasis
+        .replace(/<em>/g, '<em style="font-style: italic; color: #e8eaed;">')
+        // Lists with proper indentation and spacing
+        .replace(/<ul>/g, '<ul style="margin: 8px 0; padding-left: 20px; list-style-type: disc; color: #e8eaed;">')
+        .replace(/<ol>/g, '<ol style="margin: 8px 0; padding-left: 20px; list-style-type: decimal; color: #e8eaed;">')
+        .replace(/<li>/g, '<li style="margin: 4px 0; line-height: 1.4; color: #e8eaed;">')
+        // Blockquotes
+        .replace(/<blockquote>/g, '<blockquote style="margin: 12px 0; padding-left: 16px; border-left: 3px solid #7198f8; color: #b0bec5; font-style: italic;">')
+        // Code
+        .replace(/<code>/g, '<code style="background: rgba(113, 152, 248, 0.1); padding: 2px 4px; border-radius: 3px; font-family: monospace; color: #7198f8;">')
+        .replace(/<pre>/g, '<pre style="background: rgba(113, 152, 248, 0.1); padding: 12px; border-radius: 6px; margin: 12px 0; overflow-x: auto; color: #e8eaed;">')
+        // Horizontal rules
+        .replace(/<hr>/g, '<hr style="border: none; border-top: 1px solid #2c4a7c; margin: 16px 0;">')
+        // Links
+        .replace(/<a /g, '<a style="color: #7198f8; text-decoration: underline;" ');
+    }
 
-        // Handle numbered lists - reduced indentation
-        .replace(
-          /^\d+\.\s+(.*$)/gm,
-          '<div style="margin: 2px 0 2px 4px; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #7198f8; font-weight: bold;">•</span>$1</div>'
-        )
+    /**
+     * Escape HTML characters for safe display
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped text
+     */
+    escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
 
-        // Handle deeply nested bullet points (4+ spaces + dash/bullet) - third level
-        .replace(
-          /^    [-•]\s+(.*$)/gm,
-          '<div style="margin: 1px 0 1px 36px; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #7f8c8d; font-weight: normal; font-size: 9px;">▪</span>$1</div>'
-        )
-
-        // Handle nested bullet points (2-3 spaces + dash/bullet) - second level
-        .replace(
-          /^  [-•]\s+(.*$)/gm,
-          '<div style="margin: 1px 0 1px 20px; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #95a5a6; font-weight: normal; font-size: 10px;">◦</span>$1</div>'
-        )
-
-        // Handle main bullet points - standard size, dark blue bullets (first level)
-        .replace(
-          /^[-•]\s+(.*$)/gm,
-          '<div style="margin: 2px 0 2px 4px; padding-left: 12px; position: relative;"><span style="position: absolute; left: 0; color: #7198f8; font-weight: bold;">•</span>$1</div>'
-        )
-
-        // Text formatting - **bold** for emphasis (same color, bold weight)
-        .replace(
-          /\*\*(.*?)\*\*/g,
-          '<strong style="color: #7198f8; font-weight: bold;">$1</strong>'
-        )
-
-        // Remove any italic formatting completely - no *text* processing
-
-        // Handle topic headers at start of lines (e.g., **Topic**: description)
-        .replace(
-          /^(\*\*[^*]+\*\*:\s*)/gm,
-          '<div style="margin: 8px 0 3px 0; font-weight: bold; color: #7198f8; font-size: 12px;">$1</div>'
-        )
-
-        // Handle horizontal rules
-        .replace(
-          /^---+$/gm,
-          '<hr style="border: none; border-top: 1px solid #2c4a7c; margin: 10px 0;">'
-        )
-
-        // Handle blockquotes
-        .replace(
-          /^>\s+(.*$)/gm,
-          '<div style="border-left: 3px solid #7198f8; padding-left: 8px; margin: 4px 0; color: #7198f8;">$1</div>'
-        )
-
-        // Handle simple tables (basic markdown table support)
-        .replace(/^\|(.+)\|$/gm, (match, content) => {
-          const cells = content.split("|").map(cell => cell.trim())
-          const isHeader = cells.some(
-            cell => cell.includes("**") || cell.includes("---")
-          )
-          const cellTag = isHeader ? "th" : "td"
-          const cellStyle = isHeader
-            ? "padding: 6px 8px; border-bottom: 2px solid #7198f8; font-weight: bold; color: #7198f8; text-align: left;"
-            : "padding: 4px 8px; border-bottom: 1px solid #2c4a7c; color: #e8eaed;"
-
-          return `<tr>${cells
-            .map(
-              cell => `<${cellTag} style="${cellStyle}">${cell}</${cellTag}>`
-            )
-            .join("")}</tr>`
-        })
-
-        // Wrap table rows in table element
-        .replace(
-          /(<tr>.*?<\/tr>[\s\S]*?<tr>.*?<\/tr>)/g,
-          '<table style="width: 100%; border-collapse: collapse; margin: 8px 0; background: #0f2142; border-radius: 6px; overflow: hidden;">$1</table>'
-        )
-
-        // Convert paragraph breaks (double newlines)
-        .replace(/\n\n+/g, '<div style="margin: 6px 0;"></div>')
-
-        // Convert single line breaks
-        .replace(/\n/g, "<br>")
-
-      return formatted
+    // Basic markdown formatting fallback
+    basicMarkdownFormat(text) {
+      if (!text) return "";
+      
+      // Split into lines for better processing
+      const lines = text.split('\n');
+      const result = [];
+      let inList = false;
+      
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+        
+        if (!line) {
+          // Empty line - close any open list and add spacing
+          if (inList) {
+            result.push('</ul>');
+            inList = false;
+          }
+          result.push('<br>');
+          continue;
+        }
+        
+        // Headers
+        if (line.startsWith('### ')) {
+          if (inList) { result.push('</ul>'); inList = false; }
+          line = line.replace(/^### (.*)/, '<h3>$1</h3>');
+        } else if (line.startsWith('## ')) {
+          if (inList) { result.push('</ul>'); inList = false; }
+          line = line.replace(/^## (.*)/, '<h2>$1</h2>');
+        } else if (line.startsWith('# ')) {
+          if (inList) { result.push('</ul>'); inList = false; }
+          line = line.replace(/^# (.*)/, '<h1>$1</h1>');
+        }
+        // Lists
+        else if (line.startsWith('- ')) {
+          if (!inList) {
+            result.push('<ul>');
+            inList = true;
+          }
+          line = line.replace(/^- (.*)/, '<li>$1</li>');
+        }
+        // Regular paragraph
+        else {
+          if (inList) { result.push('</ul>'); inList = false; }
+          line = `<p>${line}</p>`;
+        }
+        
+        // Apply bold formatting
+        line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        result.push(line);
+      }
+      
+      // Close any remaining list
+      if (inList) {
+        result.push('</ul>');
+      }
+      
+      return result.join('');
     }
 
     // Format timestamp to human-readable "time ago" format
@@ -1117,72 +1114,19 @@
         let formattedContent = ""
 
         if (type === "Summary") {
-          // Format summary content beautifully
+          // Use unified storage format - content.raw contains the markdown
           formattedContent = `
             <div style="margin-bottom: 15px; padding: 10px; background: #0a1f3d; border-radius: 6px;">
-              <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">📄 Page Analysis</div>
-              <div style="color: #b0bec5; font-size: 12px;">
-                <strong>Difficulty:</strong> ${content.difficulty || "N/A"}<br>
-                <strong>Reading Time:</strong> ${
-                  content.readingTime || "N/A"
-                } min
-              </div>
+              <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">📄 Summary Content</div>
+              <div style="color: #e8eaed; line-height: 1.5;">${this.formatMarkdownToHTML(content.raw)}</div>
             </div>
           `
-
-          if (content.keyPoints && content.keyPoints.length > 0) {
-            formattedContent += `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0a1f3d; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">🎯 Key Learning Points</div>
-                ${content.keyPoints
-                  .map(
-                    point =>
-                      `<div style="margin: 4px 0;">• ${this.formatMarkdownToHTML(
-                        point
-                      )}</div>`
-                  )
-                  .join("")}
-              </div>
-            `
-          }
-
-          if (content.clinicalPearls && content.clinicalPearls.length > 0) {
-            formattedContent += `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0a1f3d; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💎 Clinical Pearls</div>
-                ${content.clinicalPearls
-                  .map(
-                    pearl =>
-                      `<div style="margin: 4px 0;">• ${this.formatMarkdownToHTML(
-                        pearl
-                      )}</div>`
-                  )
-                  .join("")}
-              </div>
-            `
-          }
-
-          if (content.differentials && content.differentials.length > 0) {
-            formattedContent += `
-              <div style="margin-bottom: 15px; padding: 10px; background: #0a1f3d; border-radius: 6px;">
-                <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">🔍 Differentials</div>
-                ${content.differentials
-                  .map(
-                    diff =>
-                      `<div style="margin: 4px 0;">• ${this.formatMarkdownToHTML(
-                        diff
-                      )}</div>`
-                  )
-                  .join("")}
-              </div>
-            `
-          }
         } else if (type === "Q&A") {
-          // Q&A cache should contain formatted answer strings
+          // Q&A cache uses unified format - content.raw contains the markdown answer
           formattedContent = `
             <div style="margin-bottom: 15px; padding: 10px; background: #0f2142; border-radius: 6px;">
               <div style="color: #7198f8; font-weight: bold; margin-bottom: 8px;">💡 Answer</div>
-              <div style="color: #e8eaed; line-height: 1.5;">${content}</div>
+              <div style="color: #e8eaed; line-height: 1.5;">${this.formatMarkdownToHTML(content.raw)}</div>
             </div>
           `
         }
@@ -1222,7 +1166,7 @@
           pageUrl,
           age: this.formatTimeAgo(cached.timestamp),
         })
-        return cached.response.parsed
+        return this.formatMarkdownToHTML(cached.response.raw)
       }
 
       if (!this.apiKey) {
@@ -1680,7 +1624,7 @@
         return responses
           .map(response => ({
             question: response.request.question,
-            answer: response.response.parsed || response.response.raw,
+            answer: this.formatMarkdownToHTML(response.response.raw),
             timestamp: response.timestamp,
           }))
           .reverse() // Most recent first
@@ -1840,7 +1784,7 @@
       // Initialize summary content after a brief delay to ensure DOM is ready
       setTimeout(async () => {
         await this.updateSummaryTab()
-      }, 100)
+      }, 200)
     }
 
     injectStyles() {
@@ -1854,10 +1798,11 @@
         existingScrollBar.remove()
       }
 
-      // Get page content to calculate word count
-      const pageContent = this.aiTutor.extractPageContent()
-      const wordCount = pageContent ? pageContent.trim().split(/\s+/).length : 0
-      const readingTime = Math.ceil(wordCount / 80) // 80 words per minute for learning, rough estimate
+      // Get page content to calculate word count (now always uses clean extractor)
+      const pageContent = this.aiTutor.extractPageContent();
+      const wordCount = pageContent ? pageContent.trim().split(/\s+/).length : 0;
+      const readingTime = Math.ceil(wordCount / 80); // 80 words per minute for learning, rough estimate
+      // ...existing code...
 
       // Create scroll progress container
       const scrollContainer = document.createElement("div")
@@ -2328,7 +2273,7 @@
 
             const formattedContent = isHTML
               ? lastSummary.content
-              : this.formatMarkdownToHTML(lastSummary.content || "")
+              : this.aiTutor.formatMarkdownToHTML(lastSummary.content || "")
 
             const properSummaryObject = {
               raw: lastSummary.content, // Original content (could be markdown or HTML)
@@ -2444,21 +2389,12 @@
             }
           </div>`
 
-      // Check if this is the new unified format (has both raw and parsed)
-      if (summary.parsed && summary.raw) {
-        // Display processed HTML content (already formatted, just like Q&A)
+      // Check if this is the new unified format (has raw content)
+      if (summary.raw || typeof summary === "string") {
+        // Add placeholder div for summary content (will be set via innerHTML after container creation)
         html += `
-          <div style="margin-bottom: 6px; font-size: 12px;">
-            ${summary.parsed}
-          </div>
-        `
-      } else if (typeof summary === "string") {
-        // Handle case where summary is just a raw string (legacy or error case)
-        console.log("⚠️ Summary is a plain string, formatting as markdown")
-        const formattedString = this.formatMarkdownToHTML(summary)
-        html += `
-          <div style="margin-bottom: 6px; font-size: 12px;">
-            ${formattedString}
+          <div class="summary-content-area" style="margin-bottom: 6px; font-size: 12px;">
+            <!-- Content will be set via innerHTML -->
           </div>
         `
       } else if (
@@ -2552,6 +2488,23 @@
       `
 
       container.innerHTML = html
+
+      // Now set the summary content directly (like your working example)
+      if (summary.raw) {
+        const formattedContent = this.aiTutor.formatMarkdownToHTML(summary.raw);
+        const summaryContentDiv = container.querySelector('.summary-content-area');
+        if (summaryContentDiv) {
+          summaryContentDiv.innerHTML = formattedContent;
+          console.log("✅ Set summary content directly via innerHTML");
+        }
+      } else if (typeof summary === "string") {
+        const formattedString = this.aiTutor.formatMarkdownToHTML(summary);
+        const summaryContentDiv = container.querySelector('.summary-content-area');
+        if (summaryContentDiv) {
+          summaryContentDiv.innerHTML = formattedString;
+          console.log("✅ Set string summary content directly via innerHTML");
+        }
+      }
 
       // Update the length display with current preference
       this.updateLengthDisplay(container)
@@ -2734,8 +2687,8 @@
               // It's a formatted error message
               answerContent.innerHTML = answer
             } else {
-              // It's a regular answer
-              answerContent.innerHTML = `<strong>💡 Answer:</strong><br>${answer}`
+              // It's a regular answer - format markdown content
+              answerContent.innerHTML = `<strong>💡 Answer:</strong><br>${this.aiTutor.formatMarkdownToHTML(answer)}`
               questionInput.value = "" // Clear input after successful answer
 
               // Refresh history button to show new entry exists
@@ -2828,7 +2781,7 @@
                     🕐 ${entryTime}
                   </div>
                   <div style="color: #e8eaed; font-size: 12px; line-height: 1.4;">
-                    ${entry.answer}
+                    ${this.aiTutor.formatMarkdownToHTML(entry.answer)}
                   </div>
                 </div>
               `
@@ -2903,7 +2856,7 @@
                     🕐 ${entryTime}
                   </div>
                   <div style="color: #e8eaed; font-size: 12px; line-height: 1.4;">
-                    ${this.formatSummaryContentSimple(entry.content)}
+                    ${this.aiTutor.formatMarkdownToHTML(entry.content)}
                   </div>
                 </div>
               `
@@ -4128,8 +4081,7 @@
             if (data) {
               const response = JSON.parse(data)
               if (response.type === "qa") {
-                const answerText =
-                  response.response.raw || response.response.parsed || ""
+                const answerText = response.response.raw || ""
                 dataArray.push({
                   date: new Date(response.timestamp)
                     .toISOString()
@@ -4180,9 +4132,6 @@
                 if (response.response && response.response.raw) {
                   // New markdown format - use full raw content (same as Q&A)
                   summaryContent = response.response.raw
-                } else if (response.response && response.response.parsed) {
-                  // Alternative format
-                  summaryContent = response.response.parsed
                 } else {
                   // Fallback for other formats
                   summaryContent = JSON.stringify(response.response || {})
@@ -4645,20 +4594,20 @@
               if (
                 response.type === "qa" &&
                 response.request.question &&
-                response.response.parsed
+                response.response.raw
               ) {
                 allQAEntries.push({
                   question: response.request.question,
-                  answer: response.response.parsed,
+                  answer: response.response.raw,
                   page: response.pageTitle || "Unknown Page",
                   timestamp: response.timestamp,
                 })
               } else if (
                 response.type === "summary" &&
-                response.response.parsed
+                response.response.raw
               ) {
                 allSummaries.push({
-                  content: response.response.parsed,
+                  content: response.response.raw,
                   page: response.pageTitle || "Unknown Page",
                   timestamp: response.timestamp,
                   focus: response.request.focus || "general",
@@ -4919,7 +4868,7 @@
 
         // Convert to expected format for display
         return responses.map(response => ({
-          content: response.response.parsed || response.response.raw,
+          content: response.response.raw,
           timestamp: response.timestamp,
           focus: response.request.focus || "general",
         }))
@@ -4939,7 +4888,7 @@
         if (responses.length > 0) {
           const latest = responses[0] // Already sorted by timestamp, most recent first
           return {
-            content: latest.response.parsed || latest.response.raw,
+            content: latest.response.raw,
             timestamp: latest.timestamp,
             focus: latest.request.focus || "general",
           }
@@ -5410,7 +5359,7 @@
                 page_title: response.pageTitle || "Unknown",
                 page_url: response.pageUrl || "Unknown",
                 question: response.request.question || "",
-                answer: response.response.raw || response.response.parsed || "",
+                answer: response.response.raw || "",
                 model_used: response.metadata?.model || "unknown",
                 question_length: response.metadata?.questionLength || 0,
                 language: response.request.languageInstruction
@@ -5423,9 +5372,6 @@
               if (response.response && response.response.raw) {
                 // New markdown format or legacy format with raw content
                 summaryContent = response.response.raw
-              } else if (response.response && response.response.parsed) {
-                // Alternative format
-                summaryContent = response.response.parsed
               } else {
                 // Fallback for other formats
                 summaryContent = JSON.stringify(response.response || {})
@@ -5792,7 +5738,7 @@
           const latest = responses[0] // Already sorted by timestamp, most recent first
 
           return {
-            content: latest.response.parsed || latest.response.raw,
+            content: latest.response.raw,
             timestamp: latest.timestamp,
             focus: latest.request.focus || "general",
             pageUrl: pageUrl,
@@ -5893,7 +5839,7 @@
 
         // Convert to expected format for display
         return responses.map(response => ({
-          content: response.response.parsed || response.response.raw,
+          content: response.response.raw,
           timestamp: response.timestamp,
           pageUrl: pageUrl,
           options: response.request.options || {},

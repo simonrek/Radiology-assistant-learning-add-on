@@ -4,6 +4,30 @@ All notable changes to the **Radiology Assistant Personal Tutor** will be docume
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2025-09-01 - Enhanced Markdown Rendering & Unified Storage
+
+### 🎉 Added
+
+- **Professional Markdown Rendering System**
+  - Complete CSS styling overhaul with explicit inline styles for all HTML elements
+  - DOMPurify integration for secure HTML sanitization
+
+- **Unified Storage Architecture**
+  - Simplified data format using only raw markdown content with single-point formatting
+  - Eliminated complex .parsed/.raw fallback logic throughout codebase
+  - Consistent formatMarkdownToHTML() usage across all UI components
+  - Improved cache handling and display consistency
+
+### 🔧 Improved
+- **API Response Processing**
+  - Optimized AI prompt instructions for concise, high-yield medical summaries
+  - Enhanced response validation and error handling
+
+- **User Interface Polish**
+  - Enhanced visual contrast and spacing for better learning experience
+  - Consistent styling across summary panels, Q&A history, and modal dialogs 
+
+
 ## [0.3.0] - 2025-08-07 - Major Storage & UX Overhaul 🚀
 
 ### 🎉 Added

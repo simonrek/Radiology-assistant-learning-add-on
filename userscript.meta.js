@@ -2,8 +2,8 @@
 // ==UserScript==
 // @name         Radiology Assistant Personal Tutor
 // @namespace    https://github.com/simonrek/Radiology-assistant-learning-add-on
-// @version      0.3.0
-// @description  Latest update: 7.8.2025 ABOUT: GDPR-conscious AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress and maximize learning efficiency with Mistral AI.
+// @version      0.3.1
+// @description  Latest update: 1.9.2025 ABOUT: GDPR-conscious AI-powered personal tutor for enhanced learning on Radiology Assistant - track progress and maximize learning efficiency with Mistral AI.
 // @author       Simon Rekanovic
 // @homepage     https://github.com/simonrek/Radiology-assistant-learning-add-on
 // @supportURL   https://github.com/simonrek/Radiology-assistant-learning-add-on/issues
@@ -18,6 +18,8 @@
 // @grant        GM.listValues
 // @grant        GM.addStyle
 // @grant        GM.xmlHttpRequest
+// @require      https://cdn.jsdelivr.net/npm/marked/marked.min.js
+// @require      https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js
 // @connect      api.mistral.ai
 // @run-at       document-end
 // @license      MIT
